@@ -1,5 +1,7 @@
 # Canon CR3 Native WIC Codec (Windows 10/11 x64)
 
+[![Build and Release Windows x64](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml/badge.svg)](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml)
+
 Native **Windows Imaging Component (WIC)** decoder for Canon `.CR3` RAW files, powered by current **LibRaw** with **OpenMP**.
 Makes Windows Explorer (thumbnails & preview pane), Paint, and classic WIC viewers render **true 14-bit RAW colors** without the magenta/pink tint of outdated Microsoft codecs.
 
