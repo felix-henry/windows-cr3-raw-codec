@@ -22,3 +22,6 @@ third_party/LibRaw/
 *.suo
 Thumbs.db
 Desktop.ini
+
+# Local agent instructions
+AGENTS.md

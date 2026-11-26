@@ -74,10 +74,60 @@ jobs:
             dist/*.zip
             dist/*.exe
 
-      - name: Publish GitHub Release
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
         if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $outPath = "build/release-notes.md"
+          New-Item -ItemType Directory -Force -Path "build" | Out-Null
+
+          $lines = Get-Content -Path "CHANGELOG.md" -Encoding UTF8
+          $escapedTag = [regex]::Escape($tag)
+          $inSection = $false
+          $sectionLevel = 0
+          $collected = [System.Collections.Generic.List[string]]::new()
+
+          foreach ($line in $lines) {
+            if (-not $inSection) {
+              if ($line -match "^(#{1,2})\s+\[?$escapedTag\]?(?:\s|$)") {
+                $inSection = $true
+                $sectionLevel = $Matches[1].Length
+              }
+              continue
+            }
+
+            if ($line -match "^(#{1,2})\s+" -and $Matches[1].Length -le $sectionLevel) {
+              break
+            }
+            $collected.Add($line)
+          }
+
+          $body = ($collected -join "`n").Trim()
+          if ([string]::IsNullOrWhiteSpace($body)) {
+            Write-Warning "No section for '$tag' found in CHANGELOG.md; falling back to auto-generated release notes."
+            "has_notes=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            Set-Content -Path $outPath -Value $body -Encoding UTF8
+            "has_notes=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "Extracted $($collected.Count) lines for $tag from CHANGELOG.md."
+          }
+
+      - name: Publish GitHub Release (from CHANGELOG.md)
+        if: startsWith(github.ref, 'refs/tags/v') && steps.changelog.outputs.has_notes == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          body_path: build/release-notes.md
+          files: |
+            dist/*.zip
+            dist/*.exe
+
+      - name: Publish GitHub Release (auto-generated fallback)
+        if: startsWith(github.ref, 'refs/tags/v') && steps.changelog.outputs.has_notes != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
           files: |
             dist/*.zip
             dist/*.exe
