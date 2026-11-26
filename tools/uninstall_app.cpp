@@ -64,7 +64,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
     const int answer = MessageBoxW(
         nullptr,
-        L"Moechten Sie den Canon CR3 WIC RAW Codec wirklich vollstaendig deinstallieren?",
+        cr3setup::L(
+            L"Do you really want to uninstall the Canon CR3 WIC RAW Codec?",
+            L"Moechten Sie den Canon CR3 WIC RAW Codec wirklich vollstaendig deinstallieren?"),
         cr3setup::kAppTitle,
         MB_YESNO | MB_ICONQUESTION);
     if (answer != IDYES)
@@ -104,8 +106,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     MessageBoxW(
         nullptr,
         scheduled
-            ? L"Canon CR3 WIC RAW Codec wurde deregistriert.\nEinige geoeffnete DLL-Dateien werden beim naechsten Windows-Neustart automatisch entfernt."
-            : L"Canon CR3 WIC RAW Codec wurde vollstaendig entfernt.",
+            ? cr3setup::L(
+                  L"Canon CR3 WIC RAW Codec has been unregistered.\n"
+                  L"Some in-use DLL files are scheduled for automatic removal on the next Windows restart.",
+                  L"Canon CR3 WIC RAW Codec wurde deregistriert.\n"
+                  L"Einige geoeffnete DLL-Dateien werden beim naechsten Windows-Neustart automatisch entfernt.")
+            : cr3setup::L(
+                  L"Canon CR3 WIC RAW Codec has been completely removed.",
+                  L"Canon CR3 WIC RAW Codec wurde vollstaendig entfernt."),
         cr3setup::kAppTitle,
         MB_OK | MB_ICONINFORMATION);
 

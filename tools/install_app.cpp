@@ -50,8 +50,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     {
         MessageBoxW(
             nullptr,
-            L"CR3WICCodec.dll oder libraw.dll wurde im Paketordner nicht gefunden.\n"
-            L"Bitte entpacken Sie zuerst das vollstaendige Release-ZIP vor dem Start von Install.exe.",
+            cr3setup::L(
+                L"CR3WICCodec.dll or libraw.dll was not found in the package folder.\n"
+                L"Please extract the complete release ZIP before running Install.exe.",
+                L"CR3WICCodec.dll oder libraw.dll wurde im Paketordner nicht gefunden.\n"
+                L"Bitte entpacken Sie zuerst das vollstaendige Release-ZIP vor dem Start von Install.exe."),
             cr3setup::kAppTitle,
             MB_OK | MB_ICONERROR);
         CoUninitialize();
@@ -62,9 +65,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     {
         const int choice = MessageBoxW(
             nullptr,
-            L"Microsoft Visual C++ 2015-2022 Redistributable (x64) ist nicht installiert.\n"
-            L"LibRaw benoetigt diese Laufzeitbibliothek.\n\n"
-            L"Soll die offizielle Microsoft-Downloadseite jetzt geoeffnet werden?",
+            cr3setup::L(
+                L"Microsoft Visual C++ 2015-2022 Redistributable (x64) is not installed.\n"
+                L"LibRaw requires this runtime library.\n\n"
+                L"Open the official Microsoft download page now?",
+                L"Microsoft Visual C++ 2015-2022 Redistributable (x64) ist nicht installiert.\n"
+                L"LibRaw benoetigt diese Laufzeitbibliothek.\n\n"
+                L"Soll die offizielle Microsoft-Downloadseite jetzt geoeffnet werden?"),
             cr3setup::kAppTitle,
             MB_YESNO | MB_ICONWARNING);
         if (choice == IDYES)
@@ -81,11 +88,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         const DWORD err = GetLastError();
         if (err != ERROR_ALREADY_EXISTS)
         {
-            MessageBoxW(
-                nullptr,
-                (L"Installationsordner konnte nicht erstellt werden:\n" + targetDir + L"\n\n" + cr3setup::FormatWin32Error(err)).c_str(),
-                cr3setup::kAppTitle,
-                MB_OK | MB_ICONERROR);
+            const std::wstring msg = std::wstring(cr3setup::L(
+                L"Could not create installation directory:\n",
+                L"Installationsordner konnte nicht erstellt werden:\n")) +
+                targetDir + L"\n\n" + cr3setup::FormatWin32Error(err);
+            MessageBoxW(nullptr, msg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONERROR);
             CoUninitialize();
             return 1;
         }
@@ -102,16 +109,18 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             std::wstring hint;
             if (err == ERROR_SHARING_VIOLATION || err == ERROR_ACCESS_DENIED)
             {
-                hint = L"\n\nHinweis: Die Datei ist eventuell noch vom Windows Explorer gesperrt. "
-                       L"Bitte Explorer-Fenster schliessen (oder kurz abmelden) und erneut versuchen.";
+                hint = cr3setup::L(
+                    L"\n\nHint: The file may currently be locked by Windows Explorer. "
+                    L"Please close Explorer windows (or sign out briefly) and try again.",
+                    L"\n\nHinweis: Die Datei ist eventuell noch vom Windows Explorer gesperrt. "
+                    L"Bitte Explorer-Fenster schliessen (oder kurz abmelden) und erneut versuchen.");
             }
-            MessageBoxW(
-                nullptr,
-                (L"Fehler beim Kopieren von " + std::wstring(name) + L" nach:\n" + dst + L"\n\n" +
-                 cr3setup::FormatWin32Error(err) + hint)
-                    .c_str(),
-                cr3setup::kAppTitle,
-                MB_OK | MB_ICONERROR);
+            const std::wstring msg =
+                std::wstring(cr3setup::L(L"Failed to copy ", L"Fehler beim Kopieren von ")) +
+                name +
+                cr3setup::L(L" to:\n", L" nach:\n") +
+                dst + L"\n\n" + cr3setup::FormatWin32Error(err) + hint;
+            MessageBoxW(nullptr, msg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONERROR);
             CoUninitialize();
             return 1;
         }
@@ -146,11 +155,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     DWORD regExit = 1;
     if (!cr3setup::RunProcessSilent(regCmd, regExit) || regExit != 0)
     {
-        MessageBoxW(
-            nullptr,
-            (L"COM/WIC-Registrierung (regsvr32) ist fehlgeschlagen (Code " + std::to_wstring(regExit) + L").").c_str(),
-            cr3setup::kAppTitle,
-            MB_OK | MB_ICONERROR);
+        const std::wstring msg =
+            std::wstring(cr3setup::L(
+                L"COM/WIC registration (regsvr32) failed (code ",
+                L"COM/WIC-Registrierung (regsvr32) ist fehlgeschlagen (Code ")) +
+            std::to_wstring(regExit) + L").";
+        MessageBoxW(nullptr, msg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONERROR);
         CoUninitialize();
         return 1;
     }
@@ -163,23 +173,29 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     {
         MessageBoxW(
             nullptr,
-            L"Die WIC-Registry-Eintraege konnten nicht verifiziert werden.",
+            cr3setup::L(
+                L"Could not verify the WIC registry entries.",
+                L"Die WIC-Registry-Eintraege konnten nicht verifiziert werden."),
             cr3setup::kAppTitle,
             MB_OK | MB_ICONERROR);
         CoUninitialize();
         return 1;
     }
 
-    MessageBoxW(
-        nullptr,
-        (L"Canon CR3 WIC RAW Codec wurde erfolgreich installiert!\n\n"
-         L"Installationspfad:\n" + targetDir + L"\n\n"
-         L".CR3-Dateien werden im Windows Explorer nun ueber LibRaw (14-Bit RAW) gerendert.\n\n"
-         L"Tipp: Falls alte gecachte Thumbnails noch sichtbar sind, koennen Sie diese ueber "
-         L"die Windows-Datentraegerbereinigung (cleanmgr.exe -> Miniaturansichten) leeren.")
-            .c_str(),
-        cr3setup::kAppTitle,
-        MB_OK | MB_ICONINFORMATION);
+    const std::wstring successMsg =
+        std::wstring(cr3setup::L(
+            L"Canon CR3 WIC RAW Codec has been installed successfully!\n\nInstall path:\n",
+            L"Canon CR3 WIC RAW Codec wurde erfolgreich installiert!\n\nInstallationspfad:\n")) +
+        targetDir +
+        cr3setup::L(
+            L"\n\n.CR3 files in Windows Explorer will now render via LibRaw (14-bit RAW).\n\n"
+            L"Tip: If previously cached thumbnails still appear, clear them via "
+            L"Windows Disk Cleanup (cleanmgr.exe -> Thumbnails).",
+            L"\n\n.CR3-Dateien werden im Windows Explorer nun ueber LibRaw (14-Bit RAW) gerendert.\n\n"
+            L"Tipp: Falls alte gecachte Thumbnails noch sichtbar sind, koennen Sie diese ueber "
+            L"die Windows-Datentraegerbereinigung (cleanmgr.exe -> Miniaturansichten) leeren.");
+
+    MessageBoxW(nullptr, successMsg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONINFORMATION);
 
     CoUninitialize();
     return 0;

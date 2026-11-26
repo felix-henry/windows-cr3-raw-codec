@@ -15,6 +15,16 @@ namespace cr3setup
 {
 inline constexpr wchar_t kAppTitle[] = L"Canon CR3 WIC RAW Codec";
 
+inline bool IsGermanUI()
+{
+    return PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_GERMAN;
+}
+
+inline const wchar_t* L(const wchar_t* en, const wchar_t* de)
+{
+    return IsGermanUI() ? de : en;
+}
+
 inline std::wstring GetExecutableDir()
 {
     std::wstring path(MAX_PATH, L'\0');
