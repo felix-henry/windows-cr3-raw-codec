@@ -90,6 +90,7 @@ if ($Package) {
 
     Copy-Item -Path (Join-Path $RepoRoot "scripts\install.ps1") -Destination (Join-Path $stageDir "scripts\install.ps1") -Force
     Copy-Item -Path (Join-Path $RepoRoot "scripts\uninstall.ps1") -Destination (Join-Path $stageDir "scripts\uninstall.ps1") -Force
+    Copy-Item -Path (Join-Path $RepoRoot "scripts\update.ps1") -Destination (Join-Path $stageDir "scripts\update.ps1") -Force
     Copy-Item -Path (Join-Path $RepoRoot "README.md") -Destination $stageDir -Force
     Copy-Item -Path (Join-Path $RepoRoot "LICENSE") -Destination $stageDir -Force
     Copy-Item -Path (Join-Path $RepoRoot "THIRD_PARTY_NOTICES.md") -Destination $stageDir -Force

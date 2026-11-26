@@ -22,6 +22,7 @@ Makes Windows Explorer (thumbnails & preview pane), Paint, and classic WIC viewe
 
 1. **Setup Installer (`CR3WICCodec-Setup-x64-v*.exe`):** Run the setup wizard. Uninstall anytime via **Windows Settings → Apps**.
 2. **Portable ZIP (`CR3WICCodec-x64-portable.zip`):** Extract and double-click **`Install.exe`** (uses UAC elevation, no PowerShell needed). Double-click **`Uninstall.exe`** to remove.
+3. **Updating:** Re-run the latest `Setup.exe` / `Install.exe` over an existing install, or run `.\scripts\update.ps1` in an Administrator PowerShell to fetch and apply the latest GitHub release automatically.
 
 **Requirements:** Windows 10 (1809+) / Windows 11 (x64) and [VC++ 2015–2022 Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 

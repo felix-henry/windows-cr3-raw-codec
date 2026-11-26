@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CR3WICCodec VERSION 1.0.1 LANGUAGES CXX RC)
+project(CR3WICCodec VERSION 1.0.2 LANGUAGES CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "CR3WICCodec is a Windows Imaging Component (WIC) COM DLL and only supports Windows.")

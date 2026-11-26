@@ -106,23 +106,37 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         if (!CopyFileW(src.c_str(), dst.c_str(), FALSE))
         {
             const DWORD err = GetLastError();
-            std::wstring hint;
+            bool recovered = false;
             if (err == ERROR_SHARING_VIOLATION || err == ERROR_ACCESS_DENIED)
             {
-                hint = cr3setup::L(
-                    L"\n\nHint: The file may currently be locked by Windows Explorer. "
-                    L"Please close Explorer windows (or sign out briefly) and try again.",
-                    L"\n\nHinweis: Die Datei ist eventuell noch vom Windows Explorer gesperrt. "
-                    L"Bitte Explorer-Fenster schliessen (oder kurz abmelden) und erneut versuchen.");
+                const std::wstring oldDst = dst + L".old." + std::to_wstring(GetTickCount64());
+                if (MoveFileExW(dst.c_str(), oldDst.c_str(), MOVEFILE_REPLACE_EXISTING))
+                {
+                    MoveFileExW(oldDst.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
+                    recovered = (CopyFileW(src.c_str(), dst.c_str(), FALSE) != FALSE);
+                }
             }
-            const std::wstring msg =
-                std::wstring(cr3setup::L(L"Failed to copy ", L"Fehler beim Kopieren von ")) +
-                name +
-                cr3setup::L(L" to:\n", L" nach:\n") +
-                dst + L"\n\n" + cr3setup::FormatWin32Error(err) + hint;
-            MessageBoxW(nullptr, msg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONERROR);
-            CoUninitialize();
-            return 1;
+            if (!recovered)
+            {
+                const DWORD finalErr = GetLastError();
+                std::wstring hint;
+                if (finalErr == ERROR_SHARING_VIOLATION || finalErr == ERROR_ACCESS_DENIED)
+                {
+                    hint = cr3setup::L(
+                        L"\n\nHint: The file may currently be locked by Windows Explorer. "
+                        L"Please close Explorer windows (or sign out briefly) and try again.",
+                        L"\n\nHinweis: Die Datei ist eventuell noch vom Windows Explorer gesperrt. "
+                        L"Bitte Explorer-Fenster schliessen (oder kurz abmelden) und erneut versuchen.");
+                }
+                const std::wstring msg =
+                    std::wstring(cr3setup::L(L"Failed to copy ", L"Fehler beim Kopieren von ")) +
+                    name +
+                    cr3setup::L(L" to:\n", L" nach:\n") +
+                    dst + L"\n\n" + cr3setup::FormatWin32Error(finalErr) + hint;
+                MessageBoxW(nullptr, msg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONERROR);
+                CoUninitialize();
+                return 1;
+            }
         }
     }
 
