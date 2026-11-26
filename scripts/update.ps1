@@ -132,6 +132,23 @@ try {
 
         Write-Host (T "Downloading $($zipAsset.name)..." "Lade $($zipAsset.name) herunter...") -ForegroundColor Cyan
         Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $zipFile -UseBasicParsing
+
+        $sumsAsset = $release.assets | Where-Object { $_.name -eq "SHA256SUMS.txt" } | Select-Object -First 1
+        if ($sumsAsset) {
+            $sumsFile = Join-Path $tempRoot "SHA256SUMS.txt"
+            Invoke-WebRequest -Uri $sumsAsset.browser_download_url -OutFile $sumsFile -UseBasicParsing
+            $expectedLine = Get-Content -Path $sumsFile | Where-Object { $_ -match ("^([0-9a-fA-F]{64})\s+\*?" + [regex]::Escape($zipAsset.name) + "$") } | Select-Object -First 1
+            if ($expectedLine -and ($expectedLine -match "^([0-9a-fA-F]{64})\s+")) {
+                $expectedHash = $Matches[1].ToLowerInvariant()
+                $actualHash = (Get-FileHash -Path $zipFile -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($actualHash -ne $expectedHash) {
+                    Write-Error (T "SHA256 verification failed for $($zipAsset.name)! Expected $expectedHash, got $actualHash." "SHA256-Pruefung fuer $($zipAsset.name) fehlgeschlagen! Erwartet $expectedHash, erhalten $actualHash.")
+                    exit 1
+                }
+                Write-Host (T "SHA256 verified ($($actualHash.Substring(0, 12))...)." "SHA256 geprueft ($($actualHash.Substring(0, 12))...).") -ForegroundColor Green
+            }
+        }
+
         Expand-Archive -Path $zipFile -DestinationPath $tempExtractDir -Force
         $localCandidate = $tempExtractDir
     } else {

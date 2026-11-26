@@ -46,7 +46,7 @@ jobs:
         run: |
           $sample = ".\docs\images\canon-eos-r6-mark-iii-sample.CR3"
           $outPng = ".\build\ci_smoke.png"
-          & .\build\bin\test_decoder.exe $sample $outPng --thumb --dll ".\build\bin\CR3WICCodec.dll"
+          & .\build\bin\test_decoder.exe $sample $outPng --thumb --meta --preview --transform --dll ".\build\bin\CR3WICCodec.dll"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path $outPng) -or -not (Test-Path ".\build\ci_smoke_thumb.png")) {
             Write-Error "CI smoke test did not produce expected PNG outputs."
@@ -73,6 +73,7 @@ jobs:
           path: |
             dist/*.zip
             dist/*.exe
+            dist/SHA256SUMS.txt
 
       - name: Extract release notes from CHANGELOG.md
         id: changelog
@@ -122,6 +123,7 @@ jobs:
           files: |
             dist/*.zip
             dist/*.exe
+            dist/SHA256SUMS.txt
 
       - name: Publish GitHub Release (auto-generated fallback)
         if: startsWith(github.ref, 'refs/tags/v') && steps.changelog.outputs.has_notes != 'true'
@@ -131,3 +133,4 @@ jobs:
           files: |
             dist/*.zip
             dist/*.exe
+            dist/SHA256SUMS.txt

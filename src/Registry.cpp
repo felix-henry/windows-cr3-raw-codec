@@ -101,7 +101,12 @@ HRESULT RegisterCR3Codec(HMODULE moduleHandle)
     wchar_t bgr24Str[64]{};
     if (StringFromGUID2(GUID_WICPixelFormat24bppBGR, bgr24Str, _countof(bgr24Str)) == 0)
         return E_FAIL;
-    const std::wstring formatKey = clsidBase + L"\\Formats\\" + bgr24Str;
+    const std::wstring format24Key = clsidBase + L"\\Formats\\" + bgr24Str;
+
+    wchar_t bgr48Str[64]{};
+    if (StringFromGUID2(GUID_WICPixelFormat48bppBGR, bgr48Str, _countof(bgr48Str)) == 0)
+        return E_FAIL;
+    const std::wstring format48Key = clsidBase + L"\\Formats\\" + bgr48Str;
 
     const std::wstring wicCategoryInstanceKey =
         std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + kWicBitmapDecodersCategoryStr +
@@ -150,8 +155,10 @@ HRESULT RegisterCR3Codec(HMODULE moduleHandle)
     if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"SupportMultiframe", 0)))
         return hr;
 
-    // Supported pixel format
-    if (FAILED(hr = CreateEmptyRegKey(HKEY_LOCAL_MACHINE, formatKey.c_str())))
+    // Supported pixel formats (24bppBGR default, 48bppBGR optional via OutputBps=16)
+    if (FAILED(hr = CreateEmptyRegKey(HKEY_LOCAL_MACHINE, format24Key.c_str())))
+        return hr;
+    if (FAILED(hr = CreateEmptyRegKey(HKEY_LOCAL_MACHINE, format48Key.c_str())))
         return hr;
 
     // Pattern 0: Extended ISOBMFF Canon CR3 signature (19 matched bytes -> outscores Microsoft's 8-byte pattern)

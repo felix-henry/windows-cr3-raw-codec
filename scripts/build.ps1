@@ -119,6 +119,16 @@ if ($Package) {
     } else {
         Write-Host "   Hinweis: Inno Setup 6 (ISCC.exe) nicht gefunden - nur Portable-ZIP erstellt." -ForegroundColor Yellow
     }
+
+    $sumsPath = Join-Path $distDir "SHA256SUMS.txt"
+    $hashLines = Get-ChildItem -Path $distDir -File | Where-Object { $_.Extension -in @(".zip", ".exe") } | Sort-Object Name | ForEach-Object {
+        $h = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$h  $($_.Name)"
+    }
+    if ($hashLines) {
+        Set-Content -Path $sumsPath -Value $hashLines -Encoding ASCII
+        Write-Host "   SHA256SUMS.txt erstellt: $sumsPath" -ForegroundColor Green
+    }
 } else {
     Write-Host "[4/4] Paketierung uebersprungen (starte mit -Package fuer dist\). " -ForegroundColor Gray
 }

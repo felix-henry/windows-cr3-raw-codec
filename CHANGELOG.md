@@ -3,6 +3,54 @@
 All notable changes to **Canon CR3 Native WIC Codec** are documented in this file.
 On tagged releases (`v*`), GitHub Actions automatically extracts the matching `## vX.Y.Z` section as the GitHub Release body.
 
+## v1.2.0
+
+Major WIC integration and feature release adding **EXIF metadata reading** for Windows Explorer & Photo viewers, fast **`IWICBitmapSourceTransform`** & **`GetPreview()`** support, optional **16-bit (`48bppBGR`) / wide-gamut color spaces**, faster ISOBMFF stream probing, and **SHA256 release verification**.
+
+### What's New in v1.2.0
+
+- **EXIF & Camera Metadata in Windows (`GetMetadataQueryReader` & `IWICMetadataBlockReader`)**
+  - Implemented `IWICBitmapDecoder::GetMetadataQueryReader`, `IWICBitmapFrameDecode::GetMetadataQueryReader`, and `IWICMetadataBlockReader` backed by Windows' native TIFF/EXIF metadata engine.
+  - Exposes Camera Make/Model, Body Serial, Lens Make/Model/Serial, ISO, Shutter Speed, Aperture (`f/`), Focal Length (incl. 35mm eq.), Exposure Program, Metering Mode, `DateTimeOriginal`, Software, Artist, Description, and Color Space directly to Windows Explorer Details / InfoTips and WIC apps.
+- **Fast Previews & Scaling (`GetPreview` & `IWICBitmapSourceTransform`)**
+  - Implemented `CR3Decoder::GetPreview()` using the embedded camera JPEG preview (with automatic half-size RAW fallback).
+  - Implemented `IWICBitmapSourceTransform` (`DoesSupportTransform`, `GetClosestSize`, `GetClosestPixelFormat`, `CopyPixels`) on `CR3FrameDecode`, routing scaled requests ≤ half RAW size through the fast half-size RAW buffer instead of decoding full resolution first.
+- **Optional 16-Bit (`48bppBGR`) & Wide-Gamut Output (`HKLM\SOFTWARE\CR3WICCodec`)**
+  - Registered `GUID_WICPixelFormat48bppBGR` alongside `GUID_WICPixelFormat24bppBGR`.
+  - Added `OutputBps` (`DWORD`, default `8`; set `16` for 16-bit `48bppBGR`) and `OutputColorSpace` (`DWORD`, default `1` = sRGB; `2` = Adobe RGB, `3` = Wide Gamut, `4` = ProPhoto RGB, `5` = XYZ, `6` = ACES) with matching `GetColorContexts` reporting.
+- **Faster `ProbeStream` & Orientation Polish**
+  - `LibRawProcessor::ProbeStream` now validates the `.CR3` ISOBMFF `ftypcrx ` + `moov` box structure directly instead of initializing `LibRaw` twice per open.
+  - `TryDecodeEmbeddedJpegThumb` now checks the embedded JPEG's own EXIF orientation before falling back to `sizes.flip` and guards COM initialization on worker threads (`ComInitGuard`).
+- **Automated Release Checksums & CMake ARM64 Readiness**
+  - `scripts/build.ps1 -Package` and GitHub Actions now publish `SHA256SUMS.txt`; `scripts/update.ps1` verifies downloaded portable ZIPs against `SHA256SUMS.txt` before installing.
+  - `CMakeLists.txt` generalizes 64-bit platform checks and OpenMP runtime lookup for both x64 and ARM64 toolchains.
+
+### Verified Checks
+
+- Built cleanly (`CR3WICCodec.dll` `1.2.0.0`) and verified with `test_decoder.exe --thumb --meta --preview --transform --dll` on **Canon EOS R6 Mark III** (`.CR3`):
+  - `QueryCapability`: `hr=0x00000000`, `caps=0x12`
+  - `Metadata Blocks: 1` (`Canon EOS R6 Mark III`, `RF50mm F1.4 L VCM`, ISO `100`, `f/7.1`, `1/20 s`, `50.0 mm`, `2026:01:22 15:41:04`)
+  - `Preview Dimensions`: `6960 x 4640` · `Transform Scaled`: `1200 x 801 (closest native 3493 x 2332)`
+
+### Installation & Upgrading
+
+- **Upgrade from an earlier version** directly in PowerShell:
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\CR3WICCodec\update.ps1" -FromGitHub
+  ```
+- **Fresh Install (Recommended)**: Download and run **`CR3WICCodec-Setup-x64-v1.2.0.exe`** below.
+- **Portable**: Download **`CR3WICCodec-x64-portable.zip`**, extract it to a permanent folder, and run `Install.exe` (or `install.ps1` as Administrator).
+
+### Downloads
+
+| File | Description |
+| :--- | :--- |
+| **`CR3WICCodec-Setup-x64-v1.2.0.exe`** | Windows Installer (DE/EN) with automatic elevation, Explorer thumbnail cache refresh, and Windows Uninstaller entry |
+| **`CR3WICCodec-x64-portable.zip`** | Portable archive containing `CR3WICCodec.dll`, `libraw.dll`, `vcomp140.dll`, `test_decoder.exe`, `Install.exe`, `Uninstall.exe`, `update.ps1`, and PowerShell helpers |
+| **`SHA256SUMS.txt`** | SHA-256 checksums for verifying the setup executable and portable ZIP |
+
+**Full Changelog:** [`v1.1.0...v1.2.0`](https://github.com/felix-henry/windows-cr3-raw-codec/compare/v1.1.0...v1.2.0)
+
 ## v1.1.0
 
 Performance, concurrency, and build-pipeline release bringing zero-copy WIC bitmap caching, instant in-memory thumbnail reuse, an optional ultra-fast embedded JPEG thumbnail mode, unified versioning, and automated CI decoder verification.

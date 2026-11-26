@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <initguid.h>
 #include <wincodec.h>
+#include <wincodecsdk.h>
 #include <shlwapi.h>
 #include <cstdint>
 #include <cstdio>
@@ -47,7 +48,7 @@ private:
     T* ptr_ = nullptr;
 };
 
-HRESULT SaveSourceAsPng(IWICImagingFactory* factory, IWICBitmapSource* source, const wchar_t* outPath)
+HRESULT SaveSourceAsImage(IWICImagingFactory* factory, IWICBitmapSource* source, const wchar_t* outPath)
 {
     ComPtr<IWICStream> stream;
     HRESULT hr = factory->CreateStream(stream.Put());
@@ -58,8 +59,12 @@ HRESULT SaveSourceAsPng(IWICImagingFactory* factory, IWICBitmapSource* source, c
     if (FAILED(hr))
         return hr;
 
+    const std::wstring ext = std::filesystem::path(outPath).extension().wstring();
+    const bool isJpeg = (_wcsicmp(ext.c_str(), L".jpg") == 0 || _wcsicmp(ext.c_str(), L".jpeg") == 0);
+    const GUID containerFmt = isJpeg ? GUID_ContainerFormatJpeg : GUID_ContainerFormatPng;
+
     ComPtr<IWICBitmapEncoder> encoder;
-    hr = factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, encoder.Put());
+    hr = factory->CreateEncoder(containerFmt, nullptr, encoder.Put());
     if (FAILED(hr))
         return hr;
 
@@ -68,11 +73,12 @@ HRESULT SaveSourceAsPng(IWICImagingFactory* factory, IWICBitmapSource* source, c
         return hr;
 
     ComPtr<IWICBitmapFrameEncode> frameEncode;
-    hr = encoder->CreateNewFrame(frameEncode.Put(), nullptr);
+    ComPtr<IPropertyBag2> props;
+    hr = encoder->CreateNewFrame(frameEncode.Put(), isJpeg ? props.Put() : nullptr);
     if (FAILED(hr))
         return hr;
 
-    hr = frameEncode->Initialize(nullptr);
+    hr = frameEncode->Initialize(isJpeg ? props.Get() : nullptr);
     if (FAILED(hr))
         return hr;
 
@@ -85,7 +91,11 @@ HRESULT SaveSourceAsPng(IWICImagingFactory* factory, IWICBitmapSource* source, c
     if (FAILED(hr))
         return hr;
 
-    WICPixelFormatGUID format = GUID_WICPixelFormat24bppBGR;
+    WICPixelFormatGUID srcFmt{};
+    source->GetPixelFormat(&srcFmt);
+    WICPixelFormatGUID format = (!isJpeg && srcFmt == GUID_WICPixelFormat48bppBGR)
+                                    ? GUID_WICPixelFormat48bppBGR
+                                    : GUID_WICPixelFormat24bppBGR;
     hr = frameEncode->SetPixelFormat(&format);
     if (FAILED(hr))
         return hr;
@@ -99,6 +109,67 @@ HRESULT SaveSourceAsPng(IWICImagingFactory* factory, IWICBitmapSource* source, c
         return hr;
 
     return encoder->Commit();
+}
+
+void PrintMetadataSummary(IWICBitmapFrameDecode* frame)
+{
+    ComPtr<IWICMetadataBlockReader> blockReader;
+    if (SUCCEEDED(frame->QueryInterface(IID_PPV_ARGS(blockReader.Put()))) && blockReader)
+    {
+        UINT blockCount = 0;
+        blockReader->GetCount(&blockCount);
+        std::wprintf(L"Metadata Blocks      : %u\n", blockCount);
+    }
+
+    ComPtr<IWICMetadataQueryReader> qr;
+    HRESULT hr = frame->GetMetadataQueryReader(qr.Put());
+    if (FAILED(hr) || !qr)
+    {
+        std::fwprintf(stderr, L"GetMetadataQueryReader failed: 0x%08X\n", hr);
+        return;
+    }
+
+    auto readStr = [&](const wchar_t* query, const wchar_t* label) {
+        PROPVARIANT pv;
+        PropVariantInit(&pv);
+        if (SUCCEEDED(qr->GetMetadataByName(query, &pv)))
+        {
+            if (pv.vt == VT_LPSTR && pv.pszVal)
+                std::printf("%-21ls: %s\n", label, pv.pszVal);
+            else if (pv.vt == VT_LPWSTR && pv.pwszVal)
+                std::wprintf(L"%-21ls: %s\n", label, pv.pwszVal);
+        }
+        PropVariantClear(&pv);
+    };
+
+    readStr(L"/ifd/{ushort=271}", L"Camera Make");
+    readStr(L"/ifd/{ushort=272}", L"Camera Model");
+    readStr(L"/ifd/exif/{ushort=42036}", L"Lens Model");
+    readStr(L"/ifd/exif/{ushort=36867}", L"DateTimeOriginal");
+
+    PROPVARIANT pv;
+    PropVariantInit(&pv);
+    if (SUCCEEDED(qr->GetMetadataByName(L"/ifd/exif/{ushort=34855}", &pv)) && pv.vt == VT_UI2)
+        std::wprintf(L"%-21ls: %u\n", L"ISO", pv.uiVal);
+    PropVariantClear(&pv);
+
+    if (SUCCEEDED(qr->GetMetadataByName(L"/ifd/exif/{ushort=33437}", &pv)) && pv.vt == VT_UI8 && pv.uhVal.HighPart > 0)
+        std::wprintf(L"%-21ls: f/%.1f\n", L"Aperture", static_cast<double>(pv.uhVal.LowPart) / pv.uhVal.HighPart);
+    PropVariantClear(&pv);
+
+    if (SUCCEEDED(qr->GetMetadataByName(L"/ifd/exif/{ushort=33434}", &pv)) && pv.vt == VT_UI8 && pv.uhVal.HighPart > 0)
+    {
+        const double sec = static_cast<double>(pv.uhVal.LowPart) / pv.uhVal.HighPart;
+        if (sec > 0.0 && sec < 0.5)
+            std::wprintf(L"%-21ls: 1/%.0f s\n", L"Shutter Speed", 1.0 / sec);
+        else
+            std::wprintf(L"%-21ls: %.2f s\n", L"Shutter Speed", sec);
+    }
+    PropVariantClear(&pv);
+
+    if (SUCCEEDED(qr->GetMetadataByName(L"/ifd/exif/{ushort=37386}", &pv)) && pv.vt == VT_UI8 && pv.uhVal.HighPart > 0)
+        std::wprintf(L"%-21ls: %.1f mm\n", L"Focal Length", static_cast<double>(pv.uhVal.LowPart) / pv.uhVal.HighPart);
+    PropVariantClear(&pv);
 }
 
 void PrintColorStats(IWICBitmapSource* source)
@@ -154,7 +225,7 @@ int wmain(int argc, wchar_t** argv)
 {
     if (argc < 2)
     {
-        std::fwprintf(stderr, L"Usage: test_decoder.exe <input.cr3> [output.png] [--thumb] [--dll <CR3WICCodec.dll>]\n");
+        std::fwprintf(stderr, L"Usage: test_decoder.exe <input.cr3> [output.png|.jpg] [--thumb] [--meta] [--preview] [--transform] [--dll <CR3WICCodec.dll>]\n");
         return 1;
     }
 
@@ -162,11 +233,20 @@ int wmain(int argc, wchar_t** argv)
     std::wstring outputPath;
     std::wstring directDllPath;
     bool testThumb = false;
+    bool testMeta = false;
+    bool testPreview = false;
+    bool testTransform = false;
 
     for (int i = 2; i < argc; ++i)
     {
         if (std::wcscmp(argv[i], L"--thumb") == 0)
             testThumb = true;
+        else if (std::wcscmp(argv[i], L"--meta") == 0)
+            testMeta = true;
+        else if (std::wcscmp(argv[i], L"--preview") == 0)
+            testPreview = true;
+        else if (std::wcscmp(argv[i], L"--transform") == 0)
+            testTransform = true;
         else if (std::wcscmp(argv[i], L"--dll") == 0 && i + 1 < argc)
             directDllPath = argv[++i];
         else if (outputPath.empty())
@@ -285,6 +365,60 @@ int wmain(int argc, wchar_t** argv)
                     frame->GetSize(&w, &h);
                     std::wprintf(L"Full RAW Dimensions  : %u x %u\n", w, h);
 
+                    if (testMeta)
+                        PrintMetadataSummary(frame.Get());
+
+                    if (testPreview)
+                    {
+                        ComPtr<IWICBitmapSource> preview;
+                        hr = decoder->GetPreview(preview.Put());
+                        if (SUCCEEDED(hr) && preview)
+                        {
+                            UINT pw = 0, ph = 0;
+                            preview->GetSize(&pw, &ph);
+                            std::wprintf(L"Preview Dimensions   : %u x %u\n", pw, ph);
+                        }
+                        else
+                        {
+                            std::fwprintf(stderr, L"GetPreview failed: 0x%08X\n", hr);
+                            exitCode = 1;
+                        }
+                    }
+
+                    if (testTransform)
+                    {
+                        ComPtr<IWICBitmapSourceTransform> transform;
+                        hr = frame->QueryInterface(IID_PPV_ARGS(transform.Put()));
+                        BOOL supported = FALSE;
+                        UINT txW = 1200, txH = 801;
+                        WICPixelFormatGUID txFmt = GUID_WICPixelFormat24bppBGR;
+                        if (SUCCEEDED(hr) && transform &&
+                            SUCCEEDED(transform->DoesSupportTransform(WICBitmapTransformRotate0, &supported)) && supported &&
+                            SUCCEEDED(transform->GetClosestSize(&txW, &txH)) &&
+                            SUCCEEDED(transform->GetClosestPixelFormat(&txFmt)))
+                        {
+                            const UINT reqW = 1200;
+                            const UINT reqH = (w > 0) ? (1200u * h / w) : 801;
+                            const UINT txStride = reqW * 3u;
+                            std::vector<uint8_t> txBuf(static_cast<size_t>(txStride) * reqH);
+                            hr = transform->CopyPixels(
+                                nullptr, reqW, reqH, &txFmt, WICBitmapTransformRotate0,
+                                txStride, static_cast<UINT>(txBuf.size()), txBuf.data());
+                            if (SUCCEEDED(hr))
+                                std::wprintf(L"Transform Scaled     : %u x %u (closest native %u x %u)\n", reqW, reqH, txW, txH);
+                            else
+                            {
+                                std::fwprintf(stderr, L"Transform CopyPixels failed: 0x%08X\n", hr);
+                                exitCode = 1;
+                            }
+                        }
+                        else
+                        {
+                            std::fwprintf(stderr, L"IWICBitmapSourceTransform check failed: 0x%08X\n", hr);
+                            exitCode = 1;
+                        }
+                    }
+
                     if (testThumb)
                     {
                         ComPtr<IWICBitmapSource> thumb;
@@ -297,7 +431,7 @@ int wmain(int argc, wchar_t** argv)
 
                             std::filesystem::path tp(outputPath);
                             std::wstring thumbOut = (tp.parent_path() / (tp.stem().wstring() + L"_thumb.png")).wstring();
-                            hr = SaveSourceAsPng(factory.Get(), thumb.Get(), thumbOut.c_str());
+                            hr = SaveSourceAsImage(factory.Get(), thumb.Get(), thumbOut.c_str());
                             if (SUCCEEDED(hr))
                                 std::wprintf(L"Saved thumbnail PNG  : %s\n", thumbOut.c_str());
                             else
@@ -310,16 +444,16 @@ int wmain(int argc, wchar_t** argv)
                     }
 
                     const ULONGLONG t0 = GetTickCount64();
-                    hr = SaveSourceAsPng(factory.Get(), frame.Get(), outputPath.c_str());
+                    hr = SaveSourceAsImage(factory.Get(), frame.Get(), outputPath.c_str());
                     const ULONGLONG elapsedMs = GetTickCount64() - t0;
                     if (FAILED(hr))
                     {
-                        std::fwprintf(stderr, L"SaveSourceAsPng failed: 0x%08X\n", hr);
+                        std::fwprintf(stderr, L"SaveSourceAsImage failed: 0x%08X\n", hr);
                         exitCode = 1;
                     }
                     else
                     {
-                        std::wprintf(L"Decoded & saved PNG  : %s (%llu ms)\n", outputPath.c_str(), elapsedMs);
+                        std::wprintf(L"Decoded & saved image: %s (%llu ms)\n", outputPath.c_str(), elapsedMs);
                         PrintColorStats(frame.Get());
                     }
                 }

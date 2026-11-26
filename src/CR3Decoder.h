@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 #include <wincodec.h>
+#include <wincodecsdk.h>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -17,11 +18,44 @@ struct CR3DecoderState
     RawImageInfo info{};
     bool initialized = false;
 
-    std::shared_ptr<const DecodedImageBGR24> thumbnail;
-    std::shared_ptr<const DecodedImageBGR24> fullImage;
+    std::shared_ptr<const DecodedImageBGR> thumbnail;
+    std::shared_ptr<const DecodedImageBGR> preview;
+    std::shared_ptr<const DecodedImageBGR> fullImage;
+
+    bool metadataAttempted = false;
+    IWICBitmapDecoder* metaTiffDecoder = nullptr;
+    IWICBitmapFrameDecode* metaTiffFrame = nullptr;
+    IWICMetadataQueryReader* metaQueryReader = nullptr;
+    IWICMetadataBlockReader* metaBlockReader = nullptr;
+
+    void releaseMetadataLocked()
+    {
+        if (metaBlockReader)
+        {
+            metaBlockReader->Release();
+            metaBlockReader = nullptr;
+        }
+        if (metaQueryReader)
+        {
+            metaQueryReader->Release();
+            metaQueryReader = nullptr;
+        }
+        if (metaTiffFrame)
+        {
+            metaTiffFrame->Release();
+            metaTiffFrame = nullptr;
+        }
+        if (metaTiffDecoder)
+        {
+            metaTiffDecoder->Release();
+            metaTiffDecoder = nullptr;
+        }
+        metadataAttempted = false;
+    }
 
     ~CR3DecoderState()
     {
+        releaseMetadataLocked();
         if (stream)
         {
             stream->Release();
@@ -30,11 +64,11 @@ struct CR3DecoderState
     }
 };
 
-// Lightweight IWICBitmapSource backed by a shared 24bppBGR buffer (zero-copy thumbnails).
+// Lightweight IWICBitmapSource backed by a shared 24bppBGR or 48bppBGR buffer (zero-copy).
 class CR3BitmapSource final : public IWICBitmapSource
 {
 public:
-    explicit CR3BitmapSource(std::shared_ptr<const DecodedImageBGR24> image);
+    explicit CR3BitmapSource(std::shared_ptr<const DecodedImageBGR> image);
     ~CR3BitmapSource();
 
     // IUnknown
@@ -51,11 +85,14 @@ public:
 
 private:
     std::atomic<ULONG> refCount_{1};
-    std::shared_ptr<const DecodedImageBGR24> image_;
+    std::shared_ptr<const DecodedImageBGR> image_;
 };
 
-// IWICBitmapFrameDecode implementation for frame 0 of a Canon CR3 file.
-class CR3FrameDecode final : public IWICBitmapFrameDecode
+// IWICBitmapFrameDecode + IWICBitmapSourceTransform + IWICMetadataBlockReader for frame 0 of a Canon CR3 file.
+class CR3FrameDecode final
+    : public IWICBitmapFrameDecode
+    , public IWICBitmapSourceTransform
+    , public IWICMetadataBlockReader
 {
 public:
     explicit CR3FrameDecode(std::shared_ptr<CR3DecoderState> state);
@@ -78,8 +115,29 @@ public:
     HRESULT STDMETHODCALLTYPE GetColorContexts(UINT cCount, IWICColorContext** ppIColorContexts, UINT* pcActualCount) override;
     HRESULT STDMETHODCALLTYPE GetThumbnail(IWICBitmapSource** ppIThumbnail) override;
 
+    // IWICBitmapSourceTransform
+    HRESULT STDMETHODCALLTYPE CopyPixels(
+        const WICRect* prc,
+        UINT uiWidth,
+        UINT uiHeight,
+        WICPixelFormatGUID* pguidDstFormat,
+        WICBitmapTransformOptions dstTransform,
+        UINT nStride,
+        UINT cbBufferSize,
+        BYTE* pbBuffer) override;
+    HRESULT STDMETHODCALLTYPE GetClosestSize(UINT* puiWidth, UINT* puiHeight) override;
+    HRESULT STDMETHODCALLTYPE GetClosestPixelFormat(WICPixelFormatGUID* pguidDstFormat) override;
+    HRESULT STDMETHODCALLTYPE DoesSupportTransform(WICBitmapTransformOptions dstTransform, BOOL* pfIsSupported) override;
+
+    // IWICMetadataBlockReader
+    HRESULT STDMETHODCALLTYPE GetContainerFormat(GUID* pguidContainerFormat) override;
+    HRESULT STDMETHODCALLTYPE GetCount(UINT* pcCount) override;
+    HRESULT STDMETHODCALLTYPE GetReaderByIndex(UINT nIndex, IWICMetadataReader** ppIMetadataReader) override;
+    HRESULT STDMETHODCALLTYPE GetEnumerator(IEnumUnknown** ppIEnumMetadata) override;
+
 private:
-    HRESULT getOrDecodeFullImage(std::shared_ptr<const DecodedImageBGR24>& outImage);
+    HRESULT getOrDecodeFullImage(std::shared_ptr<const DecodedImageBGR>& outImage);
+    HRESULT getOrDecodeHalfImage(std::shared_ptr<const DecodedImageBGR>& outImage);
 
     std::atomic<ULONG> refCount_{1};
     std::shared_ptr<CR3DecoderState> state_;

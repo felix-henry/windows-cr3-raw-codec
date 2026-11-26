@@ -1,12 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
-project(CR3WICCodec VERSION 1.1.0 LANGUAGES CXX RC)
+project(CR3WICCodec VERSION 1.2.0 LANGUAGES CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "CR3WICCodec is a Windows Imaging Component (WIC) COM DLL and only supports Windows.")
 endif()
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-    message(FATAL_ERROR "CR3WICCodec requires an x64 (64-bit) build configuration.")
+    message(FATAL_ERROR "CR3WICCodec requires a 64-bit (x64 or ARM64) build configuration.")
+endif()
+
+string(TOUPPER "${CMAKE_SYSTEM_PROCESSOR}" _CR3_PROC)
+if(_CR3_PROC MATCHES "ARM64|AARCH64")
+    set(_CR3_OPENMP_ARCH "arm64")
+else()
+    set(_CR3_OPENMP_ARCH "x64")
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -37,19 +44,19 @@ set_target_properties(LibRaw::LibRaw PROPERTIES
 )
 
 # Locate vcomp140.dll when LibRaw is built with OpenMP
-set(VCOMP140_DLL "" CACHE FILEPATH "Optional path to x64 vcomp140.dll (OpenMP runtime)")
+set(VCOMP140_DLL "" CACHE FILEPATH "Optional path to ${_CR3_OPENMP_ARCH} vcomp140.dll (OpenMP runtime)")
 if(NOT VCOMP140_DLL AND DEFINED ENV{VCToolsRedistDir})
-    file(GLOB _vcomp_candidates "$ENV{VCToolsRedistDir}/x64/Microsoft.VC*.OpenMP/vcomp140.dll")
+    file(GLOB _vcomp_candidates "$ENV{VCToolsRedistDir}/${_CR3_OPENMP_ARCH}/Microsoft.VC*.OpenMP/vcomp140.dll")
     if(_vcomp_candidates)
         list(GET _vcomp_candidates 0 VCOMP140_DLL)
     endif()
 endif()
 if(NOT VCOMP140_DLL)
     file(GLOB _vcomp_candidates
-        "C:/Program Files/Microsoft Visual Studio/*/Community/VC/Redist/MSVC/*/x64/Microsoft.VC*.OpenMP/vcomp140.dll"
-        "C:/Program Files/Microsoft Visual Studio/*/Enterprise/VC/Redist/MSVC/*/x64/Microsoft.VC*.OpenMP/vcomp140.dll"
-        "C:/Program Files/Microsoft Visual Studio/*/BuildTools/VC/Redist/MSVC/*/x64/Microsoft.VC*.OpenMP/vcomp140.dll"
-        "C:/Program Files (x86)/Microsoft Visual Studio/*/BuildTools/VC/Redist/MSVC/*/x64/Microsoft.VC*.OpenMP/vcomp140.dll"
+        "C:/Program Files/Microsoft Visual Studio/*/Community/VC/Redist/MSVC/*/${_CR3_OPENMP_ARCH}/Microsoft.VC*.OpenMP/vcomp140.dll"
+        "C:/Program Files/Microsoft Visual Studio/*/Enterprise/VC/Redist/MSVC/*/${_CR3_OPENMP_ARCH}/Microsoft.VC*.OpenMP/vcomp140.dll"
+        "C:/Program Files/Microsoft Visual Studio/*/BuildTools/VC/Redist/MSVC/*/${_CR3_OPENMP_ARCH}/Microsoft.VC*.OpenMP/vcomp140.dll"
+        "C:/Program Files (x86)/Microsoft Visual Studio/*/BuildTools/VC/Redist/MSVC/*/${_CR3_OPENMP_ARCH}/Microsoft.VC*.OpenMP/vcomp140.dll"
     )
     if(_vcomp_candidates)
         list(GET _vcomp_candidates 0 VCOMP140_DLL)
