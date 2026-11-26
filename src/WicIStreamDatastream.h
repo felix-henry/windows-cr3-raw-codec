@@ -6,12 +6,13 @@
 #include <windows.h>
 #include <objidl.h>
 #include <libraw/libraw.h>
-#include <vector>
+#include <array>
 #include <cstdint>
+#include <vector>
 
 // Adapts a COM IStream* (provided by WIC) to LibRaw_abstract_datastream with
-// buffered read-ahead so header parsing and CRX decoding stay fast without
-// copying the entire RAW file into memory.
+// a 4x64 KB LRU block cache so random-access ISOBMFF/EXIF/CRX header reads
+// stay fast on NAS shares and SD cards without copying the entire file.
 class WicIStreamDatastream final : public LibRaw_abstract_datastream
 {
 public:
@@ -42,17 +43,26 @@ public:
 #endif
 
 private:
-    bool fillBuffer(INT64 offset);
-    bool seekUnderlying(INT64 offset);
+    struct CacheSlot
+    {
+        INT64 blockStart = -1;
+        INT64 blockEnd = -1;
+        uint64_t lastUsedSeq = 0;
+        std::vector<uint8_t> data;
+    };
 
-    static constexpr size_t kBufferSize = 64 * 1024;
+    static constexpr size_t kBlockSize = 64 * 1024;
+    static constexpr size_t kCacheSlots = 4;
+
+    CacheSlot* findSlotForOffset(INT64 offset);
+    CacheSlot* loadBlockForOffset(INT64 offset);
+    bool seekUnderlying(INT64 offset);
 
     IStream* stream_ = nullptr;
     INT64 totalSize_ = 0;
     INT64 pos_ = 0;
     INT64 streamPos_ = -1;
-    INT64 bufStart_ = 0;
-    INT64 bufEnd_ = 0;
-    std::vector<uint8_t> buffer_;
+    uint64_t accessSeq_ = 0;
+    std::array<CacheSlot, kCacheSlots> cache_{};
     bool valid_ = false;
 };

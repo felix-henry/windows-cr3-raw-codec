@@ -170,6 +170,30 @@ void PrintMetadataSummary(IWICBitmapFrameDecode* frame)
     if (SUCCEEDED(qr->GetMetadataByName(L"/ifd/exif/{ushort=37386}", &pv)) && pv.vt == VT_UI8 && pv.uhVal.HighPart > 0)
         std::wprintf(L"%-21ls: %.1f mm\n", L"Focal Length", static_cast<double>(pv.uhVal.LowPart) / pv.uhVal.HighPart);
     PropVariantClear(&pv);
+
+    if (SUCCEEDED(qr->GetMetadataByName(L"/ifd/exif/{ushort=37380}", &pv)) && pv.vt == VT_I8 && pv.hVal.HighPart != 0)
+    {
+        const double ev = static_cast<double>(static_cast<int32_t>(pv.hVal.LowPart)) / pv.hVal.HighPart;
+        std::wprintf(L"%-21ls: %+.2f EV\n", L"Exposure Bias", ev);
+    }
+    PropVariantClear(&pv);
+
+    if (SUCCEEDED(qr->GetMetadataByName(L"/ifd/exif/{ushort=37385}", &pv)) && pv.vt == VT_UI2)
+        std::wprintf(L"%-21ls: 0x%X\n", L"Flash", pv.uiVal);
+    PropVariantClear(&pv);
+
+    if (SUCCEEDED(qr->GetMetadataByName(L"/ifd/exif/{ushort=41987}", &pv)) && pv.vt == VT_UI2)
+        std::wprintf(L"%-21ls: %s\n", L"White Balance", pv.uiVal == 0 ? L"Auto" : L"Manual");
+    PropVariantClear(&pv);
+
+    readStr(L"/ifd/exif/{ushort=37521}", L"SubSecTimeOriginal");
+    readStr(L"/ifd/{ushort=33432}", L"Copyright");
+    if (SUCCEEDED(qr->GetMetadataByName(L"/ifd/{ushort=18246}", &pv)) && pv.vt == VT_UI2)
+        std::wprintf(L"%-21ls: %u/5\n", L"Rating", pv.uiVal);
+    PropVariantClear(&pv);
+
+    readStr(L"/ifd/gps/{ushort=1}", L"GPS Lat Ref");
+    readStr(L"/ifd/gps/{ushort=3}", L"GPS Lon Ref");
 }
 
 void PrintColorStats(IWICBitmapSource* source)
@@ -409,6 +433,22 @@ int wmain(int argc, wchar_t** argv)
                             else
                             {
                                 std::fwprintf(stderr, L"Transform CopyPixels failed: 0x%08X\n", hr);
+                                exitCode = 1;
+                            }
+
+                            BOOL supRot = FALSE;
+                            const UINT rotStride = reqH * 3u;
+                            std::vector<uint8_t> rotBuf(static_cast<size_t>(rotStride) * reqW);
+                            if (SUCCEEDED(transform->DoesSupportTransform(WICBitmapTransformRotate90, &supRot)) && supRot &&
+                                SUCCEEDED(transform->CopyPixels(
+                                    nullptr, reqW, reqH, &txFmt, WICBitmapTransformRotate90,
+                                    rotStride, static_cast<UINT>(rotBuf.size()), rotBuf.data())))
+                            {
+                                std::wprintf(L"Transform Rotate90   : %u x %u (OK)\n", reqH, reqW);
+                            }
+                            else
+                            {
+                                std::fwprintf(stderr, L"Transform Rotate90 failed\n");
                                 exitCode = 1;
                             }
                         }

@@ -147,6 +147,18 @@ void WriteAsciiMeta(IWICMetadataQueryWriter* qw, const wchar_t* name, const std:
     qw->SetMetadataByName(name, &pv);
 }
 
+void WriteUint8Meta(IWICMetadataQueryWriter* qw, const wchar_t* name, uint8_t val)
+{
+    if (!qw || !name)
+        return;
+
+    PROPVARIANT pv;
+    PropVariantInit(&pv);
+    pv.vt = VT_UI1;
+    pv.bVal = val;
+    qw->SetMetadataByName(name, &pv);
+}
+
 void WriteUint16Meta(IWICMetadataQueryWriter* qw, const wchar_t* name, uint16_t val)
 {
     if (!qw || !name)
@@ -169,6 +181,40 @@ void WriteRationalMeta(IWICMetadataQueryWriter* qw, const wchar_t* name, uint32_
     pv.vt = VT_UI8;
     pv.uhVal.LowPart = num;
     pv.uhVal.HighPart = den;
+    qw->SetMetadataByName(name, &pv);
+}
+
+void WriteSignedRationalMeta(IWICMetadataQueryWriter* qw, const wchar_t* name, int32_t num, int32_t den)
+{
+    if (!qw || !name || den == 0)
+        return;
+
+    PROPVARIANT pv;
+    PropVariantInit(&pv);
+    pv.vt = VT_I8;
+    pv.hVal.LowPart = static_cast<DWORD>(num);
+    pv.hVal.HighPart = static_cast<LONG>(den);
+    qw->SetMetadataByName(name, &pv);
+}
+
+void WriteGpsCoordMeta(IWICMetadataQueryWriter* qw, const wchar_t* name, const float dms[3])
+{
+    if (!qw || !name)
+        return;
+
+    ULARGE_INTEGER elems[3]{};
+    elems[0].LowPart = static_cast<DWORD>(std::round(std::max(0.0f, dms[0])));
+    elems[0].HighPart = 1u;
+    elems[1].LowPart = static_cast<DWORD>(std::round(std::max(0.0f, dms[1])));
+    elems[1].HighPart = 1u;
+    elems[2].LowPart = static_cast<DWORD>(std::round(std::max(0.0f, dms[2]) * 10000.0f));
+    elems[2].HighPart = 10000u;
+
+    PROPVARIANT pv;
+    PropVariantInit(&pv);
+    pv.vt = VT_VECTOR | VT_UI8;
+    pv.cauh.cElems = 3;
+    pv.cauh.pElems = elems;
     qw->SetMetadataByName(name, &pv);
 }
 
@@ -273,11 +319,19 @@ HRESULT EnsureMetadataBuiltLocked(CR3DecoderState& state)
                         WriteUint16Meta(qw, L"/ifd/{ushort=274}", 1); // Pixels are already oriented upright
                         WriteAsciiMeta(qw, L"/ifd/{ushort=305}", m.software);
                         WriteAsciiMeta(qw, L"/ifd/{ushort=315}", m.artist);
+                        WriteAsciiMeta(qw, L"/ifd/{ushort=33432}", m.copyright);
+                        if (m.rating >= 0 && m.rating <= 5)
+                        {
+                            static constexpr uint16_t kRatingPercents[6] = {0, 1, 25, 50, 75, 99};
+                            WriteUint16Meta(qw, L"/ifd/{ushort=18246}", static_cast<uint16_t>(m.rating));
+                            WriteUint16Meta(qw, L"/ifd/{ushort=18249}", kRatingPercents[m.rating]);
+                        }
 
                         const std::string exifDate = FormatExifTimestamp(m.timestamp);
                         WriteAsciiMeta(qw, L"/ifd/{ushort=306}", exifDate);
                         WriteAsciiMeta(qw, L"/ifd/exif/{ushort=36867}", exifDate);
                         WriteAsciiMeta(qw, L"/ifd/exif/{ushort=36868}", exifDate);
+                        WriteAsciiMeta(qw, L"/ifd/exif/{ushort=37521}", m.subSecTimeOriginal);
 
                         if (m.shutter > 0.0f)
                         {
@@ -295,8 +349,12 @@ HRESULT EnsureMetadataBuiltLocked(CR3DecoderState& state)
                             WriteUint16Meta(qw, L"/ifd/exif/{ushort=34850}", static_cast<uint16_t>(m.exposureProgram));
                         if (m.isoSpeed > 0.0f && m.isoSpeed <= 65535.0f)
                             WriteUint16Meta(qw, L"/ifd/exif/{ushort=34855}", static_cast<uint16_t>(std::round(m.isoSpeed)));
+                        if (m.hasExposureBias)
+                            WriteSignedRationalMeta(qw, L"/ifd/exif/{ushort=37380}", m.exposureBiasNum, m.exposureBiasDen);
                         if (m.meteringMode >= 0 && m.meteringMode <= 255)
                             WriteUint16Meta(qw, L"/ifd/exif/{ushort=37383}", static_cast<uint16_t>(m.meteringMode));
+                        if (m.hasFlash)
+                            WriteUint16Meta(qw, L"/ifd/exif/{ushort=37385}", m.flash);
                         if (m.focalLen > 0.0f)
                         {
                             uint32_t num = 0, den = 1;
@@ -304,12 +362,32 @@ HRESULT EnsureMetadataBuiltLocked(CR3DecoderState& state)
                             WriteRationalMeta(qw, L"/ifd/exif/{ushort=37386}", num, den);
                         }
                         WriteUint16Meta(qw, L"/ifd/exif/{ushort=40961}", static_cast<uint16_t>(m.exifColorSpace));
+                        if (m.hasWhiteBalance)
+                            WriteUint16Meta(qw, L"/ifd/exif/{ushort=41987}", m.whiteBalance);
                         if (m.focalLen35mm > 0)
                             WriteUint16Meta(qw, L"/ifd/exif/{ushort=41989}", m.focalLen35mm);
                         WriteAsciiMeta(qw, L"/ifd/exif/{ushort=42033}", m.bodySerial);
                         WriteAsciiMeta(qw, L"/ifd/exif/{ushort=42035}", m.lensMake);
                         WriteAsciiMeta(qw, L"/ifd/exif/{ushort=42036}", m.lensModel);
                         WriteAsciiMeta(qw, L"/ifd/exif/{ushort=42037}", m.lensSerial);
+
+                        if (m.hasGps)
+                        {
+                            if (m.gpsLatRef == 'N' || m.gpsLatRef == 'S')
+                            {
+                                WriteAsciiMeta(qw, L"/ifd/gps/{ushort=1}", std::string(1, m.gpsLatRef));
+                                WriteGpsCoordMeta(qw, L"/ifd/gps/{ushort=2}", m.gpsLat);
+                            }
+                            if (m.gpsLonRef == 'E' || m.gpsLonRef == 'W')
+                            {
+                                WriteAsciiMeta(qw, L"/ifd/gps/{ushort=3}", std::string(1, m.gpsLonRef));
+                                WriteGpsCoordMeta(qw, L"/ifd/gps/{ushort=4}", m.gpsLon);
+                            }
+                            WriteUint8Meta(qw, L"/ifd/gps/{ushort=5}", (m.gpsAltRef == 1) ? 1 : 0);
+                            uint32_t altNum = 0, altDen = 1;
+                            FloatToRational(std::abs(m.gpsAltitude), altNum, altDen);
+                            WriteRationalMeta(qw, L"/ifd/gps/{ushort=6}", altNum, altDen);
+                        }
 
                         qw->Release();
                     }
@@ -532,6 +610,20 @@ HRESULT CR3FrameDecode::getOrDecodeHalfImage(std::shared_ptr<const DecodedImageB
         if (state_->fullImage)
             state_->thumbnail = DownsampleHalf2x2To24bpp(*state_->fullImage);
 
+        if (!state_->thumbnail && state_->info.fastEmbeddedThumb && state_->info.embeddedJpegLength > 0)
+        {
+            auto fastThumb = std::make_shared<DecodedImageBGR>();
+            if (SUCCEEDED(LibRawProcessor::DecodeEmbeddedJpegFromStream(
+                    state_->stream,
+                    state_->info.embeddedJpegOffset,
+                    state_->info.embeddedJpegLength,
+                    state_->info.embeddedJpegFlip,
+                    *fastThumb)))
+            {
+                state_->thumbnail = std::move(fastThumb);
+            }
+        }
+
         if (!state_->thumbnail)
         {
             auto decodedThumb = std::make_shared<DecodedImageBGR>();
@@ -665,7 +757,9 @@ HRESULT STDMETHODCALLTYPE CR3FrameDecode::CopyPixels(
     if (!pbBuffer || uiWidth == 0 || uiHeight == 0)
         return E_INVALIDARG;
 
-    if (dstTransform != WICBitmapTransformRotate0)
+    constexpr DWORD kValidTransformMask =
+        WICBitmapTransformRotate270 | WICBitmapTransformFlipHorizontal | WICBitmapTransformFlipVertical;
+    if ((static_cast<DWORD>(dstTransform) & ~kValidTransformMask) != 0)
         return WINCODEC_ERR_UNSUPPORTEDOPERATION;
 
     UINT fullW = 0, fullH = 0, halfW = 0, halfH = 0;
@@ -695,11 +789,14 @@ HRESULT STDMETHODCALLTYPE CR3FrameDecode::CopyPixels(
     if (FAILED(hr) || !srcImg)
         return hr;
 
-    // Fast direct copy when size and pixel format already match
-    if (srcImg->width == uiWidth && srcImg->height == uiHeight && srcImg->pixelFormat == targetFmt)
+    // Fast direct copy when size, format, and orientation already match
+    if (dstTransform == WICBitmapTransformRotate0 &&
+        srcImg->width == uiWidth && srcImg->height == uiHeight && srcImg->pixelFormat == targetFmt)
+    {
         return CopyImageRect(*srcImg, prc, nStride, cbBufferSize, pbBuffer);
+    }
 
-    // Otherwise use WIC scaler / format converter on our zero-copy CR3BitmapSource
+    // Canonical WIC transform order: Scale (uiWidth x uiHeight) -> Crop (prc) -> Flip/Rotate (dstTransform)
     CR3BitmapSource* rawSource = new (std::nothrow) CR3BitmapSource(srcImg);
     if (!rawSource)
         return E_OUTOFMEMORY;
@@ -723,6 +820,30 @@ HRESULT STDMETHODCALLTYPE CR3FrameDecode::CopyPixels(
             pipeline = scaler;
     }
 
+    IWICBitmapClipper* clipper = nullptr;
+    const WICRect* finalCopyRect = prc;
+    if (SUCCEEDED(hr) && prc && dstTransform != WICBitmapTransformRotate0)
+    {
+        hr = factory->CreateBitmapClipper(&clipper);
+        if (SUCCEEDED(hr) && clipper)
+            hr = clipper->Initialize(pipeline, prc);
+        if (SUCCEEDED(hr) && clipper)
+        {
+            pipeline = clipper;
+            finalCopyRect = nullptr;
+        }
+    }
+
+    IWICBitmapFlipRotator* rotator = nullptr;
+    if (SUCCEEDED(hr) && dstTransform != WICBitmapTransformRotate0)
+    {
+        hr = factory->CreateBitmapFlipRotator(&rotator);
+        if (SUCCEEDED(hr) && rotator)
+            hr = rotator->Initialize(pipeline, dstTransform);
+        if (SUCCEEDED(hr) && rotator)
+            pipeline = rotator;
+    }
+
     IWICFormatConverter* conv = nullptr;
     WICPixelFormatGUID pipelineFmt = srcImg->pixelFormat;
     if (SUCCEEDED(hr) && pipelineFmt != targetFmt)
@@ -738,10 +859,14 @@ HRESULT STDMETHODCALLTYPE CR3FrameDecode::CopyPixels(
     }
 
     if (SUCCEEDED(hr))
-        hr = pipeline->CopyPixels(prc, nStride, cbBufferSize, pbBuffer);
+        hr = pipeline->CopyPixels(finalCopyRect, nStride, cbBufferSize, pbBuffer);
 
     if (conv)
         conv->Release();
+    if (rotator)
+        rotator->Release();
+    if (clipper)
+        clipper->Release();
     if (scaler)
         scaler->Release();
     rawSource->Release();
@@ -798,7 +923,9 @@ HRESULT STDMETHODCALLTYPE CR3FrameDecode::DoesSupportTransform(WICBitmapTransfor
     if (!pfIsSupported)
         return E_INVALIDARG;
 
-    *pfIsSupported = (dstTransform == WICBitmapTransformRotate0) ? TRUE : FALSE;
+    constexpr DWORD kValidTransformMask =
+        WICBitmapTransformRotate270 | WICBitmapTransformFlipHorizontal | WICBitmapTransformFlipVertical;
+    *pfIsSupported = ((static_cast<DWORD>(dstTransform) & ~kValidTransformMask) == 0) ? TRUE : FALSE;
     return S_OK;
 }
 
@@ -1022,6 +1149,20 @@ HRESULT STDMETHODCALLTYPE CR3Decoder::GetPreview(IWICBitmapSource** ppIBitmapSou
         {
             if (state_->fullImage)
                 state_->preview = DownsampleHalf2x2To24bpp(*state_->fullImage);
+
+            if (!state_->preview && state_->info.embeddedJpegLength > 0)
+            {
+                auto fastPreview = std::make_shared<DecodedImageBGR>();
+                if (SUCCEEDED(LibRawProcessor::DecodeEmbeddedJpegFromStream(
+                        state_->stream,
+                        state_->info.embeddedJpegOffset,
+                        state_->info.embeddedJpegLength,
+                        state_->info.embeddedJpegFlip,
+                        *fastPreview)))
+                {
+                    state_->preview = std::move(fastPreview);
+                }
+            }
 
             if (!state_->preview)
             {

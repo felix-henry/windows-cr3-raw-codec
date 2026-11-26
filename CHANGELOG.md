@@ -3,6 +3,53 @@
 All notable changes to **Canon CR3 Native WIC Codec** are documented in this file.
 On tagged releases (`v*`), GitHub Actions automatically extracts the matching `## vX.Y.Z` section as the GitHub Release body.
 
+## v1.3.0
+
+I/O, metadata, and WIC compliance release adding a **4× 64 KB LRU stream cache**, zero-reparse **embedded JPEG offset caching** for previews and fast thumbnails, **extended EXIF / GPS / Rating metadata**, and full **`IWICBitmapSourceTransform`** rotation/flip support.
+
+### What's New in v1.3.0
+
+- **4× 64 KB LRU Stream Cache (`WicIStreamDatastream`)**
+  - Replaced the single linear 64 KB read buffer with a 4-slot (256 KB total) aligned LRU block cache so random-access ISOBMFF/EXIF/CRX header reads no longer drop cached blocks on seeks—noticeably faster on NAS shares and SD cards, while keeping contiguous reads `≥ 128 KB` zero-copy bypassed.
+- **Cached Embedded JPEG Offset for `GetPreview()` & `FastEmbeddedThumb`**
+  - `LibRawProcessor::ReadHeader` now caches the stream offset, byte length, and orientation of the embedded CR3 JPEG preview (`imgdata.thumbs_list`).
+  - `CR3Decoder::GetPreview()` and `FastEmbeddedThumb = 1` read and decode that JPEG directly from `IStream` via `DecodeEmbeddedJpegFromStream` without re-instantiating `LibRaw`, falling back seamlessly to LibRaw if unavailable.
+- **Extended EXIF, GPS & XMP Rating Metadata (`GetMetadataQueryReader` / `IWICMetadataBlockReader`)**
+  - Added an `exif_parser_callback` in `ReadHeader` and GPS/XMP extraction to expose:
+    - `ExposureBiasValue` (`/ifd/exif/{ushort=37380}`, EV `VT_I8`)
+    - `Flash` (`/ifd/exif/{ushort=37385}`) & `WhiteBalance` (`/ifd/exif/{ushort=41987}`)
+    - `SubSecTimeOriginal` (`/ifd/exif/{ushort=37521}`) & `Copyright` (`/ifd/{ushort=33432}`)
+    - In-camera `xmp:Rating` mapped to Windows Explorer star ratings (`/ifd/{ushort=18246}` & `{ushort=18249}`)
+    - Full GPS IFD (`/ifd/gps/{ushort=1..6}`: Latitude/Longitude + Ref, Altitude + Ref) when present in `.CR3`.
+- **Complete `IWICBitmapSourceTransform` Support (All Rotations & Flips)**
+  - `CR3FrameDecode::DoesSupportTransform` and `CopyPixels` now support all standard `WICBitmapTransformOptions` (`Rotate0/90/180/270`, `FlipHorizontal`, `FlipVertical`, and combinations) in canonical WIC order (**Scale → Clip → Flip/Rotate**).
+
+### Verified Checks
+
+- Built cleanly (`CR3WICCodec.dll` `1.3.0.0`) and verified with `test_decoder.exe --thumb --meta --preview --transform --dll` on **Canon EOS R6 Mark III** (`.CR3`):
+  - `QueryCapability`: `hr=0x00000000`, `caps=0x12`
+  - `Metadata Blocks: 1` (`Canon EOS R6 Mark III`, `RF50mm F1.4 L VCM`, ISO `100`, `f/7.1`, `1/20 s`, `50.0 mm`, `+0.00 EV`, Flash `0x0`, WB `Auto`, SubSec `82`, Rating `0/5`)
+  - `Preview Dimensions`: `1620 x 1080` · `Transform Scaled`: `1200 x 801` · `Transform Rotate90`: `801 x 1200 (OK)`
+
+### Installation & Upgrading
+
+- **Upgrade from an earlier version** directly in PowerShell:
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\CR3WICCodec\update.ps1" -FromGitHub
+  ```
+- **Fresh Install (Recommended)**: Download and run **`CR3WICCodec-Setup-x64-v1.3.0.exe`** below.
+- **Portable**: Download **`CR3WICCodec-x64-portable.zip`**, extract it to a permanent folder, and run `Install.exe` (or `install.ps1` as Administrator).
+
+### Downloads
+
+| File | Description |
+| :--- | :--- |
+| **`CR3WICCodec-Setup-x64-v1.3.0.exe`** | Windows Installer (DE/EN) with automatic elevation, Explorer thumbnail cache refresh, and Windows Uninstaller entry |
+| **`CR3WICCodec-x64-portable.zip`** | Portable archive containing `CR3WICCodec.dll`, `libraw.dll`, `vcomp140.dll`, `test_decoder.exe`, `Install.exe`, `Uninstall.exe`, `update.ps1`, and PowerShell helpers |
+| **`SHA256SUMS.txt`** | SHA-256 checksums for verifying the setup executable and portable ZIP |
+
+**Full Changelog:** [`v1.2.0...v1.3.0`](https://github.com/felix-henry/windows-cr3-raw-codec/compare/v1.2.0...v1.3.0)
+
 ## v1.2.0
 
 Major WIC integration and feature release adding **EXIF metadata reading** for Windows Explorer & Photo viewers, fast **`IWICBitmapSourceTransform`** & **`GetPreview()`** support, optional **16-bit (`48bppBGR`) / wide-gamut color spaces**, faster ISOBMFF stream probing, and **SHA256 release verification**.

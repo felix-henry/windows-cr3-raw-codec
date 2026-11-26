@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <string_view>
 
 bool EnsureLibRawLoaded();
 
@@ -54,6 +55,33 @@ uint32_t ReadBE32(const uint8_t* p)
 uint64_t ReadBE64(const uint8_t* p)
 {
     return (static_cast<uint64_t>(ReadBE32(p)) << 32) | ReadBE32(p + 4);
+}
+
+uint16_t ReadOrderedU16(const uint8_t* p, unsigned int ord)
+{
+    if (ord == 0x4d4d) // 'MM' big-endian
+        return static_cast<uint16_t>((static_cast<uint16_t>(p[0]) << 8) | p[1]);
+    return static_cast<uint16_t>(p[0] | (static_cast<uint16_t>(p[1]) << 8));
+}
+
+int32_t ReadOrderedI32(const uint8_t* p, unsigned int ord)
+{
+    uint32_t u = 0;
+    if (ord == 0x4d4d)
+    {
+        u = (static_cast<uint32_t>(p[0]) << 24) |
+            (static_cast<uint32_t>(p[1]) << 16) |
+            (static_cast<uint32_t>(p[2]) << 8) |
+            static_cast<uint32_t>(p[3]);
+    }
+    else
+    {
+        u = static_cast<uint32_t>(p[0]) |
+            (static_cast<uint32_t>(p[1]) << 8) |
+            (static_cast<uint32_t>(p[2]) << 16) |
+            (static_cast<uint32_t>(p[3]) << 24);
+    }
+    return static_cast<int32_t>(u);
 }
 
 bool ReadExactFromStream(IStream* stream, void* dst, ULONG bytes)
@@ -180,21 +208,10 @@ uint16_t ReadJpegFrameExifOrientation(IWICBitmapFrameDecode* frame)
     return orient;
 }
 
-bool TryDecodeEmbeddedJpegThumb(LibRaw& processor, DecodedImageBGR& outImage)
+bool DecodeJpegBytesToImage(const uint8_t* data, size_t size, int fallbackFlip, DecodedImageBGR& outImage)
 {
-    if (processor.unpack_thumb() != LIBRAW_SUCCESS)
+    if (!data || size == 0 || size > (std::numeric_limits<DWORD>::max)())
         return false;
-
-    int err = 0;
-    libraw_processed_image_t* thumb = processor.dcraw_make_mem_thumb(&err);
-    if (!thumb)
-        return false;
-
-    if (thumb->type != LIBRAW_IMAGE_JPEG || thumb->data_size == 0)
-    {
-        LibRaw::dcraw_clear_mem(thumb);
-        return false;
-    }
 
     ComInitGuard comGuard;
     bool ok = false;
@@ -204,7 +221,7 @@ bool TryDecodeEmbeddedJpegThumb(LibRaw& processor, DecodedImageBGR& outImage)
         IWICStream* memStream = nullptr;
         if (SUCCEEDED(factory->CreateStream(&memStream)) && memStream)
         {
-            if (SUCCEEDED(memStream->InitializeFromMemory(thumb->data, static_cast<DWORD>(thumb->data_size))))
+            if (SUCCEEDED(memStream->InitializeFromMemory(const_cast<BYTE*>(data), static_cast<DWORD>(size))))
             {
                 IWICBitmapDecoder* jpegDec = nullptr;
                 if (SUCCEEDED(factory->CreateDecoderFromStream(
@@ -229,12 +246,10 @@ bool TryDecodeEmbeddedJpegThumb(LibRaw& processor, DecodedImageBGR& outImage)
                                 IWICBitmapSource* source = conv;
                                 IWICBitmapFlipRotator* rotator = nullptr;
 
-                                // Prefer the embedded JPEG's own EXIF Orientation if present (!= 1),
-                                // otherwise fall back to LibRaw's CR3 orientation (sizes.flip).
                                 const WICBitmapTransformOptions xform = (jpegOrient > 1)
                                     ? MapExifOrientationToWicTransform(jpegOrient)
                                     : (jpegOrient == 1 ? WICBitmapTransformRotate0
-                                                       : MapLibRawFlipToWicTransform(processor.imgdata.sizes.flip));
+                                                       : MapLibRawFlipToWicTransform(fallbackFlip));
 
                                 if (xform != WICBitmapTransformRotate0 &&
                                     SUCCEEDED(factory->CreateBitmapFlipRotator(&rotator)) && rotator &&
@@ -279,6 +294,25 @@ bool TryDecodeEmbeddedJpegThumb(LibRaw& processor, DecodedImageBGR& outImage)
         factory->Release();
     }
 
+    return ok;
+}
+
+bool TryDecodeEmbeddedJpegThumb(LibRaw& processor, DecodedImageBGR& outImage)
+{
+    if (processor.unpack_thumb() != LIBRAW_SUCCESS)
+        return false;
+
+    int err = 0;
+    libraw_processed_image_t* thumb = processor.dcraw_make_mem_thumb(&err);
+    if (!thumb)
+        return false;
+
+    bool ok = false;
+    if (thumb->type == LIBRAW_IMAGE_JPEG && thumb->data_size > 0)
+    {
+        ok = DecodeJpegBytesToImage(thumb->data, thumb->data_size, processor.imgdata.sizes.flip, outImage);
+    }
+
     LibRaw::dcraw_clear_mem(thumb);
     return ok;
 }
@@ -294,26 +328,23 @@ void ConfigureLibRawParams(LibRaw& processor, bool halfSize, const CodecTuning& 
 
     if (tuning.outputColorSpace == 1)
     {
-        // IEC 61966-2-1 sRGB transfer curve
         p.gamm[0] = 1.0 / 2.4;
         p.gamm[1] = 12.92;
     }
     else if (tuning.outputColorSpace == 4)
     {
-        // ProPhoto RGB (gamma 1.8)
         p.gamm[0] = 1.0 / 1.8;
         p.gamm[1] = 0.0;
     }
     else
     {
-        // Adobe RGB / Wide Gamut / XYZ / ACES (gamma 2.2)
         p.gamm[0] = 1.0 / 2.2;
         p.gamm[1] = 0.0;
     }
 
     p.highlight = (tuning.highlightMode >= 0 && tuning.highlightMode <= 9) ? tuning.highlightMode : 2;
     p.no_auto_bright = tuning.noAutoBright;
-    p.auto_bright_thr = 0.001f;  // Preserve highlight dynamic range (0.1% clipping ceiling)
+    p.auto_bright_thr = 0.001f;
     p.adjust_maximum_thr = 0.75f;
     p.fbdd_noiserd = (!halfSize && tuning.chromaNoiseReduction >= 0 && tuning.chromaNoiseReduction <= 2)
                          ? tuning.chromaNoiseReduction
@@ -321,7 +352,92 @@ void ConfigureLibRawParams(LibRaw& processor, bool halfSize, const CodecTuning& 
     p.half_size = halfSize ? 1 : 0;
     p.user_qual = halfSize ? 0 : tuning.demosaicQuality;
     p.four_color_rgb = 0;
-    p.user_flip = -1;            // Respect camera EXIF orientation
+    p.user_flip = -1;
+}
+
+void ExifTagCallback(void* context, int tag, int type, int len, unsigned int ord, void* ifp, INT64 /*base*/)
+{
+    auto* meta = static_cast<RawMetadata*>(context);
+    auto* ds = static_cast<LibRaw_abstract_datastream*>(ifp);
+    if (!meta || !ds || len <= 0)
+        return;
+
+    const int baseTag = tag & 0xFFFF;
+    const int ifdClass = tag >> 16;
+
+    // IFD0 / SubIFD Copyright (0x8298)
+    if (baseTag == 0x8298 && type == 2 && len > 0 && len < 256 && (ifdClass == 0x10 || ifdClass == 0))
+    {
+        std::vector<char> buf(static_cast<size_t>(len), '\0');
+        if (ds->read(buf.data(), 1, static_cast<size_t>(len)) == len)
+            meta->copyright = CopyTrimmedCString(buf.data(), buf.size());
+        return;
+    }
+
+    // Standard ExifIFD tags (high bits == 0 in exif_gps.cpp)
+    if (ifdClass != 0)
+        return;
+
+    if (baseTag == 0x9204 && type == 10 && len == 1) // ExposureBiasValue (SRATIONAL)
+    {
+        uint8_t raw[8]{};
+        if (ds->read(raw, 1, 8) == 8)
+        {
+            const int32_t num = ReadOrderedI32(raw, ord);
+            const int32_t den = ReadOrderedI32(raw + 4, ord);
+            if (den != 0)
+            {
+                meta->hasExposureBias = true;
+                meta->exposureBiasNum = (den < 0) ? -num : num;
+                meta->exposureBiasDen = (den < 0) ? -den : den;
+            }
+        }
+    }
+    else if (baseTag == 0x9209 && type == 3 && len >= 1) // Flash (SHORT)
+    {
+        uint8_t raw[2]{};
+        if (ds->read(raw, 1, 2) == 2)
+        {
+            meta->hasFlash = true;
+            meta->flash = ReadOrderedU16(raw, ord);
+        }
+    }
+    else if (baseTag == 0xA403 && type == 3 && len >= 1) // WhiteBalance (SHORT)
+    {
+        uint8_t raw[2]{};
+        if (ds->read(raw, 1, 2) == 2)
+        {
+            meta->hasWhiteBalance = true;
+            meta->whiteBalance = ReadOrderedU16(raw, ord);
+        }
+    }
+    else if (baseTag == 0x9291 && type == 2 && len > 0 && len < 32) // SubSecTimeOriginal (ASCII)
+    {
+        std::vector<char> buf(static_cast<size_t>(len), '\0');
+        if (ds->read(buf.data(), 1, static_cast<size_t>(len)) == len)
+            meta->subSecTimeOriginal = CopyTrimmedCString(buf.data(), buf.size());
+    }
+}
+
+int ExtractXmpRating(const char* xmpData, unsigned int xmpLen)
+{
+    if (!xmpData || xmpLen == 0)
+        return -1;
+
+    const std::string_view xml(xmpData, xmpLen);
+    if (const size_t attrPos = xml.find("xmp:Rating=\""); attrPos != std::string_view::npos)
+    {
+        const size_t valPos = attrPos + 12;
+        if (valPos < xml.size() && xml[valPos] >= '0' && xml[valPos] <= '5')
+            return xml[valPos] - '0';
+    }
+    if (const size_t elemPos = xml.find("<xmp:Rating>"); elemPos != std::string_view::npos)
+    {
+        const size_t valPos = elemPos + 12;
+        if (valPos < xml.size() && xml[valPos] >= '0' && xml[valPos] <= '5')
+            return xml[valPos] - '0';
+    }
+    return -1;
 }
 
 void ExtractRawMetadata(const LibRaw& processor, const CodecTuning& tuning, RawMetadata& outMeta)
@@ -352,6 +468,21 @@ void ExtractRawMetadata(const LibRaw& processor, const CodecTuning& tuning, RawM
     outMeta.meteringMode = shoot.MeteringMode;
     outMeta.flip = processor.imgdata.sizes.flip;
     outMeta.exifColorSpace = (tuning.outputColorSpace == 1) ? 1 : 2;
+    outMeta.rating = ExtractXmpRating(idata.xmpdata, idata.xmplen);
+
+    if (other.parsed_gps.gpsparsed != 0)
+    {
+        outMeta.hasGps = true;
+        for (int i = 0; i < 3; ++i)
+        {
+            outMeta.gpsLat[i] = other.parsed_gps.latitude[i];
+            outMeta.gpsLon[i] = other.parsed_gps.longitude[i];
+        }
+        outMeta.gpsAltitude = other.parsed_gps.altitude;
+        outMeta.gpsLatRef = other.parsed_gps.latref;
+        outMeta.gpsLonRef = other.parsed_gps.longref;
+        outMeta.gpsAltRef = other.parsed_gps.altref;
+    }
 }
 
 HRESULT MapLibRawError(int err)
@@ -438,7 +569,6 @@ bool LibRawProcessor::ProbeStream(IStream* stream)
             return false;
     }
 
-    // Walk top-level ISOBMFF boxes quickly to verify a 'moov' container exists
     uint64_t offset = ftypSize;
     for (int i = 0; i < 64; ++i)
     {
@@ -467,11 +597,7 @@ bool LibRawProcessor::ProbeStream(IStream* stream)
             if (boxSize < 16)
                 return false;
         }
-        else if (boxSize32 == 0)
-        {
-            return false;
-        }
-        else if (boxSize < 8)
+        else if (boxSize32 == 0 || boxSize < 8)
         {
             return false;
         }
@@ -502,6 +628,7 @@ HRESULT LibRawProcessor::ReadHeader(IStream* stream, RawImageInfo& outInfo)
         LibRaw processor(LIBRAW_OPTIONS_NO_DATAERR_CALLBACK);
         const CodecTuning tuning = LoadCodecTuning();
         ConfigureLibRawParams(processor, false, tuning);
+        processor.set_exifparser_handler(&ExifTagCallback, &outInfo.metadata);
 
         int rc = processor.open_datastream(&datastream);
         if (rc != LIBRAW_SUCCESS)
@@ -526,7 +653,33 @@ HRESULT LibRawProcessor::ReadHeader(IStream* stream, RawImageInfo& outInfo)
         outInfo.halfHeight = (outInfo.height >= 2) ? (outInfo.height / 2u) : outInfo.height;
         outInfo.outputBps = tuning.outputBps;
         outInfo.outputColorSpace = tuning.outputColorSpace;
+        outInfo.fastEmbeddedThumb = tuning.fastEmbeddedThumb;
         ExtractRawMetadata(processor, tuning, outInfo.metadata);
+
+        // Cache location of the largest embedded JPEG preview so GetPreview() and
+        // FastEmbeddedThumb can decode directly from IStream without restarting LibRaw.
+        const auto& thumbs = processor.imgdata.thumbs_list;
+        const int thumbCount = (std::min)(thumbs.thumbcount, LIBRAW_THUMBNAIL_MAXCOUNT);
+        uint32_t bestArea = 0;
+        for (int i = 0; i < thumbCount; ++i)
+        {
+            const auto& item = thumbs.thumblist[i];
+            if (item.tformat == LIBRAW_INTERNAL_THUMBNAIL_JPEG &&
+                item.toffset > 0 && item.tlength > 0 && item.tlength <= 64u * 1024u * 1024u)
+            {
+                const uint32_t area = static_cast<uint32_t>(item.twidth) * static_cast<uint32_t>(item.theight);
+                if (outInfo.embeddedJpegLength == 0 || area >= bestArea)
+                {
+                    bestArea = area;
+                    outInfo.embeddedJpegOffset = static_cast<uint64_t>(item.toffset);
+                    outInfo.embeddedJpegLength = item.tlength;
+                    outInfo.embeddedJpegFlip = (item.tflip != 0 && item.tflip != 0xFFFF)
+                                                   ? static_cast<int>(item.tflip)
+                                                   : processor.imgdata.sizes.flip;
+                }
+            }
+        }
+
         outInfo.isValid = true;
         return S_OK;
     }
@@ -534,6 +687,34 @@ HRESULT LibRawProcessor::ReadHeader(IStream* stream, RawImageInfo& outInfo)
     {
         return E_FAIL;
     }
+}
+
+HRESULT LibRawProcessor::DecodeEmbeddedJpegFromStream(
+    IStream* stream,
+    uint64_t offset,
+    uint32_t length,
+    int fallbackFlip,
+    DecodedImageBGR& outImage)
+{
+    outImage = {};
+    if (!stream || offset == 0 || length == 0 || length > 64u * 1024u * 1024u)
+        return E_INVALIDARG;
+
+    StreamPositionGuard guard(stream);
+
+    LARGE_INTEGER li{};
+    li.QuadPart = static_cast<LONGLONG>(offset);
+    if (FAILED(stream->Seek(li, STREAM_SEEK_SET, nullptr)))
+        return WINCODEC_ERR_STREAMREAD;
+
+    std::vector<uint8_t> jpegBytes(length);
+    if (!ReadExactFromStream(stream, jpegBytes.data(), static_cast<ULONG>(length)))
+        return WINCODEC_ERR_STREAMREAD;
+
+    if (!DecodeJpegBytesToImage(jpegBytes.data(), jpegBytes.size(), fallbackFlip, outImage))
+        return WINCODEC_ERR_BADIMAGE;
+
+    return S_OK;
 }
 
 HRESULT LibRawProcessor::DecodeToImage(IStream* stream, CR3DecodeMode mode, DecodedImageBGR& outImage)

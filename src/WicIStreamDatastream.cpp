@@ -2,14 +2,17 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 WicIStreamDatastream::WicIStreamDatastream(IStream* stream)
-    : stream_(stream), buffer_(kBufferSize)
+    : stream_(stream)
 {
     if (!stream_)
         return;
 
     stream_->AddRef();
+    for (auto& slot : cache_)
+        slot.data.resize(kBlockSize);
 
     STATSTG stat{};
     if (SUCCEEDED(stream_->Stat(&stat, STATFLAG_NONAME)))
@@ -61,24 +64,61 @@ bool WicIStreamDatastream::seekUnderlying(INT64 offset)
     return true;
 }
 
-bool WicIStreamDatastream::fillBuffer(INT64 offset)
+WicIStreamDatastream::CacheSlot* WicIStreamDatastream::findSlotForOffset(INT64 offset)
+{
+    for (auto& slot : cache_)
+    {
+        if (slot.blockStart >= 0 && offset >= slot.blockStart && offset < slot.blockEnd)
+        {
+            slot.lastUsedSeq = ++accessSeq_;
+            return &slot;
+        }
+    }
+    return nullptr;
+}
+
+WicIStreamDatastream::CacheSlot* WicIStreamDatastream::loadBlockForOffset(INT64 offset)
 {
     if (!valid_ || offset < 0 || offset >= totalSize_)
-        return false;
+        return nullptr;
 
-    if (!seekUnderlying(offset))
-        return false;
+    const INT64 alignedStart = (offset / static_cast<INT64>(kBlockSize)) * static_cast<INT64>(kBlockSize);
+    if (!seekUnderlying(alignedStart))
+        return nullptr;
 
-    const ULONG toRead = static_cast<ULONG>(std::min<INT64>(kBufferSize, totalSize_ - offset));
-    ULONG bytesRead = 0;
-    const HRESULT hr = stream_->Read(buffer_.data(), toRead, &bytesRead);
-    if (FAILED(hr) || bytesRead == 0)
-        return false;
+    CacheSlot* victim = &cache_[0];
+    for (auto& slot : cache_)
+    {
+        if (slot.blockStart < 0)
+        {
+            victim = &slot;
+            break;
+        }
+        if (slot.lastUsedSeq < victim->lastUsedSeq)
+            victim = &slot;
+    }
 
-    streamPos_ += bytesRead;
-    bufStart_ = offset;
-    bufEnd_ = offset + bytesRead;
-    return true;
+    const ULONG toRead = static_cast<ULONG>(std::min<INT64>(kBlockSize, totalSize_ - alignedStart));
+    ULONG totalRead = 0;
+    while (totalRead < toRead)
+    {
+        ULONG chunk = 0;
+        const HRESULT hr = stream_->Read(victim->data.data() + totalRead, toRead - totalRead, &chunk);
+        if (FAILED(hr) || chunk == 0)
+            break;
+        totalRead += chunk;
+    }
+    if (totalRead == 0)
+        return nullptr;
+
+    streamPos_ += totalRead;
+    victim->blockStart = alignedStart;
+    victim->blockEnd = alignedStart + totalRead;
+    victim->lastUsedSeq = ++accessSeq_;
+
+    if (offset >= victim->blockEnd)
+        return nullptr;
+    return victim;
 }
 
 int WicIStreamDatastream::read(void* ptr, size_t size, size_t nmemb)
@@ -102,18 +142,20 @@ int WicIStreamDatastream::read(void* ptr, size_t size, size_t nmemb)
 
     while (remaining > 0)
     {
-        if (pos_ >= bufStart_ && pos_ < bufEnd_)
+        CacheSlot* slot = findSlotForOffset(pos_);
+        if (slot)
         {
-            const size_t offsetInBuf = static_cast<size_t>(pos_ - bufStart_);
-            const size_t chunk = std::min<size_t>(remaining, static_cast<size_t>(bufEnd_ - pos_));
-            std::memcpy(dst + totalCopied, buffer_.data() + offsetInBuf, chunk);
+            const size_t offsetInBuf = static_cast<size_t>(pos_ - slot->blockStart);
+            const size_t chunk = std::min<size_t>(remaining, static_cast<size_t>(slot->blockEnd - pos_));
+            std::memcpy(dst + totalCopied, slot->data.data() + offsetInBuf, chunk);
             pos_ += static_cast<INT64>(chunk);
             totalCopied += chunk;
             remaining -= chunk;
             continue;
         }
 
-        if (remaining >= kBufferSize)
+        // Bypass the 4-slot LRU cache for large contiguous streaming reads (>= 128 KB)
+        if (remaining >= kBlockSize * 2)
         {
             if (!seekUnderlying(pos_))
                 break;
@@ -132,7 +174,7 @@ int WicIStreamDatastream::read(void* ptr, size_t size, size_t nmemb)
         }
         else
         {
-            if (!fillBuffer(pos_))
+            if (!loadBlockForOffset(pos_))
                 break;
         }
     }
@@ -185,13 +227,13 @@ int WicIStreamDatastream::get_char()
     if (!valid_ || pos_ >= totalSize_)
         return -1;
 
-    if (pos_ < bufStart_ || pos_ >= bufEnd_)
-    {
-        if (!fillBuffer(pos_))
-            return -1;
-    }
+    CacheSlot* slot = findSlotForOffset(pos_);
+    if (!slot)
+        slot = loadBlockForOffset(pos_);
+    if (!slot)
+        return -1;
 
-    return buffer_[static_cast<size_t>(pos_++ - bufStart_)];
+    return slot->data[static_cast<size_t>(pos_++ - slot->blockStart)];
 }
 
 char* WicIStreamDatastream::gets(char* str, int sz)
