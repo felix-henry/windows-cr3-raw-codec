@@ -1,5 +1,6 @@
 #include "Registry.h"
 #include "Guid.h"
+#include "Version.h"
 #include <shlobj.h>
 #include <wincodec.h>
 #include <cstring>
@@ -126,7 +127,7 @@ HRESULT RegisterCR3Codec(HMODULE moduleHandle)
         return hr;
     if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"Description", L"Native 14-bit Canon CR3 RAW Decoder (LibRaw)")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"Version", L"1.0.0.0")))
+    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"Version", CR3_VER_STR_W)))
         return hr;
     if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"SpecVersion", L"1.0.0.0")))
         return hr;

@@ -41,6 +41,19 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build
 
+      - name: Run WIC decoder smoke test on CC0 CR3 sample
+        shell: pwsh
+        run: |
+          $sample = ".\docs\images\canon-eos-r6-mark-iii-sample.CR3"
+          $outPng = ".\build\ci_smoke.png"
+          & .\build\bin\test_decoder.exe $sample $outPng --thumb --dll ".\build\bin\CR3WICCodec.dll"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path $outPng) -or -not (Test-Path ".\build\ci_smoke_thumb.png")) {
+            Write-Error "CI smoke test did not produce expected PNG outputs."
+            exit 1
+          }
+          Remove-Item ".\build\ci_smoke*.png" -Force -ErrorAction SilentlyContinue
+
       - name: Ensure Inno Setup 6 is installed
         shell: pwsh
         run: |

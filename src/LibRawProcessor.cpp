@@ -1,6 +1,7 @@
 #include "LibRawProcessor.h"
 #include "WicIStreamDatastream.h"
 #include <libraw/libraw.h>
+#include <wincodec.h>
 #include <cstring>
 
 bool EnsureLibRawLoaded();
@@ -13,6 +14,7 @@ struct CodecTuning
     int highlightMode = 2;        // 0=clip, 2=blend, 5=rebuild
     int noAutoBright = 0;         // 0=auto-bright with conservative thr, 1=fixed scale
     int chromaNoiseReduction = 0; // 0=off, 1=FBDD light, 2=FBDD full
+    bool fastEmbeddedThumb = false;
 };
 
 DWORD ReadRegistryDwordOrDefault(const wchar_t* valueName, DWORD defaultValue)
@@ -37,7 +39,108 @@ CodecTuning LoadCodecTuning()
     cfg.highlightMode = static_cast<int>(ReadRegistryDwordOrDefault(L"HighlightMode", 2));
     cfg.noAutoBright = ReadRegistryDwordOrDefault(L"NoAutoBright", 0) ? 1 : 0;
     cfg.chromaNoiseReduction = static_cast<int>(ReadRegistryDwordOrDefault(L"ChromaNoiseReduction", 0));
+    cfg.fastEmbeddedThumb = (ReadRegistryDwordOrDefault(L"FastEmbeddedThumb", 0) != 0);
     return cfg;
+}
+
+bool TryDecodeEmbeddedJpegThumb(LibRaw& processor, DecodedImageBGR24& outImage)
+{
+    if (processor.unpack_thumb() != LIBRAW_SUCCESS)
+        return false;
+
+    int err = 0;
+    libraw_processed_image_t* thumb = processor.dcraw_make_mem_thumb(&err);
+    if (!thumb)
+        return false;
+
+    if (thumb->type != LIBRAW_IMAGE_JPEG || thumb->data_size == 0)
+    {
+        LibRaw::dcraw_clear_mem(thumb);
+        return false;
+    }
+
+    bool ok = false;
+    IWICImagingFactory* factory = nullptr;
+    if (SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory))) && factory)
+    {
+        IWICStream* memStream = nullptr;
+        if (SUCCEEDED(factory->CreateStream(&memStream)) && memStream)
+        {
+            if (SUCCEEDED(memStream->InitializeFromMemory(thumb->data, static_cast<DWORD>(thumb->data_size))))
+            {
+                IWICBitmapDecoder* jpegDec = nullptr;
+                if (SUCCEEDED(factory->CreateDecoderFromStream(
+                        memStream, &GUID_VendorMicrosoft, WICDecodeMetadataCacheOnDemand, &jpegDec)) &&
+                    jpegDec)
+                {
+                    IWICBitmapFrameDecode* frame = nullptr;
+                    if (SUCCEEDED(jpegDec->GetFrame(0, &frame)) && frame)
+                    {
+                        IWICFormatConverter* conv = nullptr;
+                        if (SUCCEEDED(factory->CreateFormatConverter(&conv)) && conv)
+                        {
+                            if (SUCCEEDED(conv->Initialize(
+                                    frame,
+                                    GUID_WICPixelFormat24bppBGR,
+                                    WICBitmapDitherTypeNone,
+                                    nullptr,
+                                    0.0,
+                                    WICBitmapPaletteTypeCustom)))
+                            {
+                                IWICBitmapSource* source = conv;
+                                IWICBitmapFlipRotator* rotator = nullptr;
+                                const int flip = processor.imgdata.sizes.flip;
+                                WICBitmapTransformOptions xform = WICBitmapTransformRotate0;
+                                if (flip == 3)
+                                    xform = WICBitmapTransformRotate180;
+                                else if (flip == 5)
+                                    xform = WICBitmapTransformRotate270;
+                                else if (flip == 6)
+                                    xform = WICBitmapTransformRotate90;
+
+                                if (xform != WICBitmapTransformRotate0 &&
+                                    SUCCEEDED(factory->CreateBitmapFlipRotator(&rotator)) && rotator &&
+                                    SUCCEEDED(rotator->Initialize(conv, xform)))
+                                {
+                                    source = rotator;
+                                }
+
+                                UINT w = 0, h = 0;
+                                if (SUCCEEDED(source->GetSize(&w, &h)) && w > 0 && h > 0)
+                                {
+                                    const UINT stride = w * 3u;
+                                    const size_t totalBytes = static_cast<size_t>(stride) * h;
+                                    outImage.width = w;
+                                    outImage.height = h;
+                                    outImage.stride = stride;
+                                    outImage.pixels.resize(totalBytes);
+                                    if (SUCCEEDED(source->CopyPixels(nullptr, stride, static_cast<UINT>(totalBytes), outImage.pixels.data())))
+                                    {
+                                        ok = true;
+                                    }
+                                    else
+                                    {
+                                        outImage = {};
+                                    }
+                                }
+
+                                if (rotator)
+                                    rotator->Release();
+                            }
+                            conv->Release();
+                        }
+                        frame->Release();
+                    }
+                    jpegDec->Release();
+                }
+            }
+            memStream->Release();
+        }
+        factory->Release();
+    }
+
+    LibRaw::dcraw_clear_mem(thumb);
+    return ok;
 }
 
 void ConfigureLibRawParams(LibRaw& processor, bool halfSize, const CodecTuning& tuning)
@@ -155,7 +258,7 @@ HRESULT LibRawProcessor::ReadHeader(IStream* stream, RawImageInfo& outInfo)
             return WINCODEC_ERR_STREAMREAD;
 
         LibRaw processor(LIBRAW_OPTIONS_NO_DATAERR_CALLBACK);
-        const CodecTuning tuning{};
+        const CodecTuning tuning = LoadCodecTuning();
         ConfigureLibRawParams(processor, false, tuning);
 
         int rc = processor.open_datastream(&datastream);
@@ -208,6 +311,15 @@ HRESULT LibRawProcessor::DecodeToBGR24(IStream* stream, bool halfSize, DecodedIm
         int rc = processor.open_datastream(&datastream);
         if (rc != LIBRAW_SUCCESS)
             return MapLibRawError(rc);
+
+        if (halfSize && tuning.fastEmbeddedThumb)
+        {
+            if (TryDecodeEmbeddedJpegThumb(processor, outImage))
+            {
+                processor.recycle();
+                return S_OK;
+            }
+        }
 
         rc = processor.unpack();
         if (rc != LIBRAW_SUCCESS)

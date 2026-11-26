@@ -17,11 +17,8 @@ struct CR3DecoderState
     RawImageInfo info{};
     bool initialized = false;
 
-    bool hasThumbnail = false;
-    DecodedImageBGR24 thumbnail;
-
-    bool hasFullImage = false;
-    DecodedImageBGR24 fullImage;
+    std::shared_ptr<const DecodedImageBGR24> thumbnail;
+    std::shared_ptr<const DecodedImageBGR24> fullImage;
 
     ~CR3DecoderState()
     {
@@ -33,11 +30,11 @@ struct CR3DecoderState
     }
 };
 
-// Lightweight IWICBitmapSource backed by a decoded 24bppBGR buffer (used for thumbnails).
+// Lightweight IWICBitmapSource backed by a shared 24bppBGR buffer (zero-copy thumbnails).
 class CR3BitmapSource final : public IWICBitmapSource
 {
 public:
-    explicit CR3BitmapSource(DecodedImageBGR24 image);
+    explicit CR3BitmapSource(std::shared_ptr<const DecodedImageBGR24> image);
     ~CR3BitmapSource();
 
     // IUnknown
@@ -54,7 +51,7 @@ public:
 
 private:
     std::atomic<ULONG> refCount_{1};
-    DecodedImageBGR24 image_;
+    std::shared_ptr<const DecodedImageBGR24> image_;
 };
 
 // IWICBitmapFrameDecode implementation for frame 0 of a Canon CR3 file.
@@ -82,7 +79,7 @@ public:
     HRESULT STDMETHODCALLTYPE GetThumbnail(IWICBitmapSource** ppIThumbnail) override;
 
 private:
-    HRESULT ensureFullDecodedLocked();
+    HRESULT getOrDecodeFullImage(std::shared_ptr<const DecodedImageBGR24>& outImage);
 
     std::atomic<ULONG> refCount_{1};
     std::shared_ptr<CR3DecoderState> state_;

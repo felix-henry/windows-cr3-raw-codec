@@ -64,13 +64,47 @@ HRESULT ProvideSrgbColorContext(UINT cCount, IWICColorContext** ppIColorContexts
 
     return ppIColorContexts[0]->InitializeFromExifColorSpace(1); // 1 = sRGB
 }
+
+std::shared_ptr<const DecodedImageBGR24> DownsampleHalf2x2(const DecodedImageBGR24& src)
+{
+    if (src.width < 2 || src.height < 2)
+        return nullptr;
+
+    auto dst = std::make_shared<DecodedImageBGR24>();
+    dst->width = src.width / 2u;
+    dst->height = src.height / 2u;
+    dst->stride = dst->width * 3u;
+    dst->pixels.resize(static_cast<size_t>(dst->stride) * dst->height);
+
+    for (uint32_t y = 0; y < dst->height; ++y)
+    {
+        const uint8_t* row0 = src.pixels.data() + static_cast<size_t>(y * 2u) * src.stride;
+        const uint8_t* row1 = row0 + src.stride;
+        uint8_t* out = dst->pixels.data() + static_cast<size_t>(y) * dst->stride;
+        for (uint32_t x = 0; x < dst->width; ++x)
+        {
+            const size_t sx0 = static_cast<size_t>(x * 2u) * 3u;
+            const size_t sx1 = sx0 + 3u;
+            for (int c = 0; c < 3; ++c)
+            {
+                const uint32_t sum = static_cast<uint32_t>(row0[sx0 + c]) +
+                                     static_cast<uint32_t>(row0[sx1 + c]) +
+                                     static_cast<uint32_t>(row1[sx0 + c]) +
+                                     static_cast<uint32_t>(row1[sx1 + c]) + 2u;
+                out[x * 3u + c] = static_cast<uint8_t>(sum >> 2);
+            }
+        }
+    }
+
+    return dst;
+}
 } // namespace
 
 // ============================================================================
 // CR3BitmapSource
 // ============================================================================
 
-CR3BitmapSource::CR3BitmapSource(DecodedImageBGR24 image)
+CR3BitmapSource::CR3BitmapSource(std::shared_ptr<const DecodedImageBGR24> image)
     : image_(std::move(image))
 {
     ModuleAddRef();
@@ -115,8 +149,8 @@ HRESULT STDMETHODCALLTYPE CR3BitmapSource::GetSize(UINT* puiWidth, UINT* puiHeig
     if (!puiWidth || !puiHeight)
         return E_INVALIDARG;
 
-    *puiWidth = image_.width;
-    *puiHeight = image_.height;
+    *puiWidth = image_->width;
+    *puiHeight = image_->height;
     return S_OK;
 }
 
@@ -146,7 +180,7 @@ HRESULT STDMETHODCALLTYPE CR3BitmapSource::CopyPalette(IWICPalette* /*pIPalette*
 
 HRESULT STDMETHODCALLTYPE CR3BitmapSource::CopyPixels(const WICRect* prc, UINT cbStride, UINT cbBufferSize, BYTE* pbBuffer)
 {
-    return CopyBGR24Rect(image_, prc, cbStride, cbBufferSize, pbBuffer);
+    return CopyBGR24Rect(*image_, prc, cbStride, cbBufferSize, pbBuffer);
 }
 
 // ============================================================================
@@ -193,21 +227,25 @@ ULONG STDMETHODCALLTYPE CR3FrameDecode::Release()
     return remaining;
 }
 
-HRESULT CR3FrameDecode::ensureFullDecodedLocked()
+HRESULT CR3FrameDecode::getOrDecodeFullImage(std::shared_ptr<const DecodedImageBGR24>& outImage)
 {
+    std::lock_guard<std::mutex> lock(state_->mutex);
     if (!state_->initialized || !state_->stream)
         return WINCODEC_ERR_NOTINITIALIZED;
 
-    if (state_->hasFullImage)
-        return S_OK;
+    if (!state_->fullImage)
+    {
+        auto decoded = std::make_shared<DecodedImageBGR24>();
+        const HRESULT hr = LibRawProcessor::DecodeToBGR24(state_->stream, false /* full-res */, *decoded);
+        if (FAILED(hr))
+            return hr;
 
-    const HRESULT hr = LibRawProcessor::DecodeToBGR24(state_->stream, false /* full-res */, state_->fullImage);
-    if (FAILED(hr))
-        return hr;
+        state_->info.width = decoded->width;
+        state_->info.height = decoded->height;
+        state_->fullImage = std::move(decoded);
+    }
 
-    state_->info.width = state_->fullImage.width;
-    state_->info.height = state_->fullImage.height;
-    state_->hasFullImage = true;
+    outImage = state_->fullImage;
     return S_OK;
 }
 
@@ -254,12 +292,12 @@ HRESULT STDMETHODCALLTYPE CR3FrameDecode::CopyPixels(const WICRect* prc, UINT cb
     if (!pbBuffer)
         return E_INVALIDARG;
 
-    std::lock_guard<std::mutex> lock(state_->mutex);
-    const HRESULT hr = ensureFullDecodedLocked();
-    if (FAILED(hr))
+    std::shared_ptr<const DecodedImageBGR24> fullImage;
+    const HRESULT hr = getOrDecodeFullImage(fullImage);
+    if (FAILED(hr) || !fullImage)
         return hr;
 
-    return CopyBGR24Rect(state_->fullImage, prc, cbStride, cbBufferSize, pbBuffer);
+    return CopyBGR24Rect(*fullImage, prc, cbStride, cbBufferSize, pbBuffer);
 }
 
 HRESULT STDMETHODCALLTYPE CR3FrameDecode::GetMetadataQueryReader(IWICMetadataQueryReader** ppIMetadataQueryReader)
@@ -281,23 +319,33 @@ HRESULT STDMETHODCALLTYPE CR3FrameDecode::GetThumbnail(IWICBitmapSource** ppIThu
 
     *ppIThumbnail = nullptr;
 
-    DecodedImageBGR24 thumbCopy;
+    std::shared_ptr<const DecodedImageBGR24> thumbPtr;
     {
         std::lock_guard<std::mutex> lock(state_->mutex);
         if (!state_->initialized || !state_->stream)
             return WINCODEC_ERR_NOTINITIALIZED;
 
-        if (!state_->hasThumbnail)
+        if (!state_->thumbnail)
         {
-            const HRESULT hr = LibRawProcessor::DecodeToBGR24(state_->stream, true /* half_size = 1 */, state_->thumbnail);
-            if (FAILED(hr))
-                return hr;
-            state_->hasThumbnail = true;
+            if (state_->fullImage)
+            {
+                // Reuse already-decoded full RAW image via fast 2x2 downsample
+                state_->thumbnail = DownsampleHalf2x2(*state_->fullImage);
+            }
+
+            if (!state_->thumbnail)
+            {
+                auto decodedThumb = std::make_shared<DecodedImageBGR24>();
+                const HRESULT hr = LibRawProcessor::DecodeToBGR24(state_->stream, true /* half_size = 1 */, *decodedThumb);
+                if (FAILED(hr))
+                    return hr;
+                state_->thumbnail = std::move(decodedThumb);
+            }
         }
-        thumbCopy = state_->thumbnail;
+        thumbPtr = state_->thumbnail;
     }
 
-    CR3BitmapSource* source = new (std::nothrow) CR3BitmapSource(std::move(thumbCopy));
+    CR3BitmapSource* source = new (std::nothrow) CR3BitmapSource(std::move(thumbPtr));
     if (!source)
         return E_OUTOFMEMORY;
 
@@ -376,10 +424,8 @@ HRESULT STDMETHODCALLTYPE CR3Decoder::Initialize(IStream* pIStream, WICDecodeOpt
         state_->stream = nullptr;
     }
     state_->initialized = false;
-    state_->hasThumbnail = false;
-    state_->hasFullImage = false;
-    state_->thumbnail = {};
-    state_->fullImage = {};
+    state_->thumbnail.reset();
+    state_->fullImage.reset();
     state_->info = {};
 
     RawImageInfo info{};

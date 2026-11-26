@@ -1,8 +1,9 @@
 #include <winresrc.h>
+#include "Version.h"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,2,0
- PRODUCTVERSION 1,0,2,0
+ FILEVERSION CR3_VER_MAJOR,CR3_VER_MINOR,CR3_VER_PATCH,0
+ PRODUCTVERSION CR3_VER_MAJOR,CR3_VER_MINOR,CR3_VER_PATCH,0
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x0L
  FILEOS 0x40004L
@@ -15,11 +16,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "CR3 WIC Codec Project"
             VALUE "FileDescription", "Canon CR3 Native WIC RAW Decoder (LibRaw)"
-            VALUE "FileVersion", "1.0.2.0"
+            VALUE "FileVersion", CR3_VER_STR_A
             VALUE "InternalName", "CR3WICCodec.dll"
             VALUE "OriginalFilename", "CR3WICCodec.dll"
             VALUE "ProductName", "Canon CR3 WIC Codec"
-            VALUE "ProductVersion", "1.0.2.0"
+            VALUE "ProductVersion", CR3_VER_STR_A
         END
     END
     BLOCK "VarFileInfo"
