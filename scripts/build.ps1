@@ -81,7 +81,7 @@ if ($Package) {
     New-Item -ItemType Directory -Force $stageDir | Out-Null
     New-Item -ItemType Directory -Force (Join-Path $stageDir "scripts") | Out-Null
 
-    foreach ($file in @("CR3WICCodec.dll", "libraw.dll", "vcomp140.dll", "test_decoder.exe")) {
+    foreach ($file in @("Install.exe", "Uninstall.exe", "CR3WICCodec.dll", "libraw.dll", "vcomp140.dll", "test_decoder.exe")) {
         $src = Join-Path $binDir $file
         if (Test-Path $src) {
             Copy-Item -Path $src -Destination $stageDir -Force

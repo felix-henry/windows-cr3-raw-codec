@@ -163,3 +163,44 @@ target_link_libraries(test_decoder PRIVATE
     ole32
     shlwapi
 )
+
+# ----------------------------------------------------------------------------
+# Install.exe & Uninstall.exe - Native UAC-elevated one-click GUI installers
+# ----------------------------------------------------------------------------
+foreach(_app IN ITEMS Install Uninstall)
+    if(_app STREQUAL "Install")
+        set(_src tools/install_app.cpp)
+    else()
+        set(_src tools/uninstall_app.cpp)
+    endif()
+
+    add_executable(${_app} WIN32
+        ${_src}
+        tools/SetupCommon.h
+        src/Guid.h
+    )
+    set_target_properties(${_app} PROPERTIES
+        OUTPUT_NAME "${_app}"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    )
+    target_compile_definitions(${_app} PRIVATE
+        UNICODE
+        _UNICODE
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+    )
+    target_compile_options(${_app} PRIVATE
+        /W4
+        /EHsc
+        /utf-8
+    )
+    target_link_libraries(${_app} PRIVATE
+        ole32
+        shell32
+        advapi32
+    )
+    target_link_options(${_app} PRIVATE
+        "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
+    )
+endforeach()

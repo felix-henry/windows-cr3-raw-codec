@@ -1,8 +1,19 @@
 # Canon CR3 Native WIC Codec (Windows 10/11 x64)
 
-A native **Windows Imaging Component (WIC)** COM decoder (`CR3WICCodec.dll`) powered by the latest **LibRaw** (`master` with OpenMP multi-core decoding and native support for **Canon EOS R6 Mark III** / `.CR3` and other modern Canon CR3 cameras).
+A native **Windows Imaging Component (WIC)** COM decoder (`CR3WICCodec.dll`) powered by the latest **LibRaw** (`master` with OpenMP multi-core decoding and native support for **all Canon `.CR3` cameras**, including **EOS R6 Mark III, R5 Mark II, R1, R3, R5, R6, R7, R8, R50**, etc.).
 
 Windows Explorer (Thumbnails & Preview Pane), Paint, classic Windows Photo Viewer, and WIC-compatible applications render **true 14-bit demosaiced RAW data** with camera white balance and full dynamic range instead of the embedded JPEG or the magenta/pink tint produced by outdated Microsoft codecs.
+
+---
+
+## Download & Easy Install (Windows 10/11 x64)
+
+**[Download Latest Release](https://github.com/felix-henry/windows-cr3-raw-codec/releases/latest)** — no coding or PowerShell required:
+
+1. **Recommended — Installer (`CR3WICCodec-Setup-x64-v*.exe`):**
+   Download and run the setup wizard. Can be uninstalled anytime via **Windows Settings → Apps**.
+2. **Portable ZIP (`CR3WICCodec-x64-portable.zip`):**
+   Extract the ZIP and double-click **`Install.exe`** (automatically asks for Administrator permission via UAC and registers everything). Double-click **`Uninstall.exe`** to remove cleanly.
 
 ---
 
@@ -23,15 +34,15 @@ Windows Explorer (Thumbnails & Preview Pane), Paint, classic Windows Photo Viewe
 
 ---
 
-## Installation
+## Manual PowerShell Install / Uninstall (Advanced)
 
-### Option 1: Installer (GitHub Releases)
-Download `CR3WICCodec-Setup-x64-v*.exe` from the Releases page and run it as Administrator.
-
-### Option 2: Portable ZIP / Manual PowerShell Install
-Extract the portable ZIP and run in an **Administrator PowerShell**:
+If you prefer PowerShell over `Setup.exe` / `Install.exe`:
 ```powershell
+# Install (Administrator PowerShell)
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+
+# Uninstall (Administrator PowerShell)
+powershell -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
 ```
 
 > **Note on Microsoft Raw Image Extension:** If `Microsoft.RawImageExtension` is installed from the Microsoft Store, the UWP **Microsoft Photos** app may continue using its own sandboxed decoder. Windows Explorer, Paint, and standard WIC apps will prefer `CR3WICCodec`. If you want to remove the Store extension:
@@ -40,12 +51,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 > ```
 
 > **Refreshing already-cached thumbnails:** If a folder still shows old cached `.CR3` thumbnails, run Windows **Disk Cleanup** (`cleanmgr.exe`) and select **Thumbnails** only.
-
-### Uninstallation
-Run in an **Administrator PowerShell** (or via Windows *Settings → Apps* when installed with the Setup EXE):
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
-```
 
 ---
 
