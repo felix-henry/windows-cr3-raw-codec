@@ -14,7 +14,7 @@ Makes Windows Explorer (thumbnails & preview pane), Paint, and classic WIC viewe
 | ![Before - Microsoft Raw Image Decoder pink tint](docs/images/before-microsoft-raw.jpg) | ![After - Canon CR3 WIC Codec natural colors](docs/images/after-cr3-wic-codec.jpg) |
 | *Outdated color matrix / black level → strong magenta wash* | *Current LibRaw 14-bit RAW demosaicing & camera WB* |
 
-<sub>Sample RAW: Canon EOS R6 Mark III ([CC0 Public Domain](https://creativecommons.org/publicdomain/zero/1.0/) via [raw.pixls.us](https://raw.pixls.us/))</sub>
+<sub>Sample RAW: [Canon EOS R6 Mark III (.CR3, CC0 Public Domain)](docs/images/canon-eos-r6-mark-iii-sample.CR3) via [raw.pixls.us](https://raw.pixls.us/)</sub>
 
 ---
 
