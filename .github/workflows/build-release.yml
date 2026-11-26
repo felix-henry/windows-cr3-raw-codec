@@ -1,0 +1,67 @@
+name: Build and Release Windows x64
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-x64:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC x64 developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Clone latest LibRaw
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/LibRaw/LibRaw.git third_party/LibRaw
+
+      - name: Build LibRaw (x64, OpenMP, universal SSE2)
+        shell: cmd
+        run: |
+          cd third_party\LibRaw
+          nmake -f Makefile.msvc "COPT_OPT=/openmp" bin\libraw.dll lib\libraw.lib
+
+      - name: Configure and build CR3WICCodec
+        shell: cmd
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Ensure Inno Setup 6 is installed
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+
+      - name: Package portable ZIP and Inno Setup installer
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Package
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CR3WICCodec-x64
+          path: |
+            dist/*.zip
+            dist/*.exe
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.exe

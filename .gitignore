@@ -1,0 +1,24 @@
+# Build artifacts
+build/
+out/
+dist/
+*.obj
+*.res
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+*.png
+
+# Third-party source & build outputs (fetched by scripts/build.ps1)
+third_party/LibRaw/
+
+# IDE & OS files
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
