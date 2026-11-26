@@ -43,7 +43,7 @@ bool IsVCRedistInstalled()
     return false;
 }
 
-bool DownloadAndInstallVCRedist()
+bool DownloadAndInstallVCRedist(bool runAsAdmin)
 {
     wchar_t tempDir[MAX_PATH]{};
     const DWORD tempLen = GetTempPathW(MAX_PATH, tempDir);
@@ -57,9 +57,8 @@ bool DownloadAndInstallVCRedist()
     if (FAILED(dlHr) || !cr3setup::FileExists(installerPath))
         return false;
 
-    const std::wstring cmdLine = L"\"" + installerPath + L"\" /install /passive /norestart";
     DWORD exitCode = 1;
-    const bool launched = cr3setup::RunProcessSilent(cmdLine, exitCode);
+    const bool launched = cr3setup::RunShellProcessWait(installerPath, L"/install /passive /norestart", runAsAdmin, exitCode);
     DeleteFileW(installerPath.c_str());
 
     // 0 = success, 3010 = reboot required (runtime files usable immediately), 1638 = newer version already present
@@ -122,6 +121,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         return 1;
     }
 
+    const bool isAdmin = cr3setup::IsProcessElevated();
+
     if (!IsVCRedistInstalled())
     {
         const std::wstring promptMsg =
@@ -142,7 +143,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             MB_YESNO | MB_ICONWARNING);
         if (choice == IDYES)
         {
-            if (!DownloadAndInstallVCRedist())
+            if (!DownloadAndInstallVCRedist(!isAdmin))
             {
                 const int openBrowser = MessageBoxW(
                     nullptr,
@@ -168,20 +169,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         }
     }
 
-    const std::wstring targetDir = cr3setup::GetProgramFilesInstallDir();
-    if (!CreateDirectoryW(targetDir.c_str(), nullptr))
+    const std::wstring targetDir = isAdmin ? cr3setup::GetProgramFilesInstallDir() : cr3setup::GetPerUserInstallDir();
+    const int dirRes = cr3setup::EnsureDirRecursive(targetDir);
+    if (dirRes != ERROR_SUCCESS && dirRes != ERROR_ALREADY_EXISTS && dirRes != ERROR_FILE_EXISTS)
     {
-        const DWORD err = GetLastError();
-        if (err != ERROR_ALREADY_EXISTS)
-        {
-            const std::wstring msg = std::wstring(cr3setup::L(
-                L"Could not create installation directory:\n",
-                L"Installationsordner konnte nicht erstellt werden:\n")) +
-                targetDir + L"\n\n" + cr3setup::FormatWin32Error(err);
-            MessageBoxW(nullptr, msg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONERROR);
-            CoUninitialize();
-            return 1;
-        }
+        const std::wstring msg = std::wstring(cr3setup::L(
+            L"Could not create installation directory:\n",
+            L"Installationsordner konnte nicht erstellt werden:\n")) +
+            targetDir + L"\n\n" + cr3setup::FormatWin32Error(static_cast<DWORD>(dirRes));
+        MessageBoxW(nullptr, msg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONERROR);
+        CoUninitialize();
+        return 1;
     }
 
     const wchar_t* requiredFiles[] = {L"CR3WICCodec.dll", L"libraw.dll"};
@@ -245,12 +243,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         }
     }
 
-    cr3setup::GrantAppContainerReadAccess(targetDir);
+    if (isAdmin)
+    {
+        cr3setup::GrantAppContainerReadAccess(targetDir);
+    }
 
     wchar_t sysDir[MAX_PATH]{};
     GetSystemDirectoryW(sysDir, MAX_PATH);
     const std::wstring targetDll = targetDir + L"\\CR3WICCodec.dll";
-    const std::wstring regCmd = L"\"" + std::wstring(sysDir) + L"\\regsvr32.exe\" /s \"" + targetDll + L"\"";
+    const std::wstring regCmd = isAdmin
+        ? (L"\"" + std::wstring(sysDir) + L"\\regsvr32.exe\" /s \"" + targetDll + L"\"")
+        : (L"\"" + std::wstring(sysDir) + L"\\regsvr32.exe\" /s /n /i:user \"" + targetDll + L"\"");
 
     DWORD regExit = 1;
     if (!cr3setup::RunProcessSilent(regCmd, regExit) || regExit != 0)
@@ -265,11 +268,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         return 1;
     }
 
+    const HKEY regRoot = isAdmin ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
     const std::wstring clsidBase = std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + kClsidCR3WICDecoderStr;
     const std::wstring instanceKey = std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + kWicBitmapDecodersCategoryStr + L"\\Instance\\" + kClsidCR3WICDecoderStr;
 
-    if (!cr3setup::RegKeyExists(HKEY_LOCAL_MACHINE, clsidBase + L"\\Patterns\\0") ||
-        !cr3setup::RegKeyExists(HKEY_LOCAL_MACHINE, instanceKey))
+    if (!cr3setup::RegKeyExists(regRoot, clsidBase + L"\\Patterns\\0") ||
+        !cr3setup::RegKeyExists(regRoot, instanceKey))
     {
         MessageBoxW(
             nullptr,

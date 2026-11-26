@@ -105,10 +105,17 @@ STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID* ppv)
 
 STDAPI DllRegisterServer()
 {
-    return RegisterCR3Codec(g_moduleHandle);
+    return RegisterCR3Codec(g_moduleHandle, HKEY_LOCAL_MACHINE);
 }
 
 STDAPI DllUnregisterServer()
 {
-    return UnregisterCR3Codec();
+    return UnregisterCR3Codec(HKEY_LOCAL_MACHINE);
+}
+
+STDAPI DllInstall(BOOL bInstall, PCWSTR pszCmdLine)
+{
+    const bool perUser = (pszCmdLine != nullptr && _wcsicmp(pszCmdLine, L"user") == 0);
+    const HKEY root = perUser ? HKEY_CURRENT_USER : HKEY_LOCAL_MACHINE;
+    return bInstall ? RegisterCR3Codec(g_moduleHandle, root) : UnregisterCR3Codec(root);
 }

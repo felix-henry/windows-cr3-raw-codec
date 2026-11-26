@@ -3,6 +3,41 @@
 All notable changes to **Canon CR3 Native WIC Codec** are documented in this file.
 On tagged releases (`v*`), GitHub Actions automatically extracts the matching `## vX.Y.Z` section as the GitHub Release body.
 
+## v1.5.0
+
+Installer UX & non-admin accessibility release introducing **per-user (standard account) installation without Administrator privileges**, a **custom `.CR3` camera icon** across all executables, automatic Windows UI language detection, and frictionless in-place upgrades.
+
+### What's New in v1.5.0
+
+- **Per-User (`HKCU`) Installation Without Admin Rights**
+  - **`CR3WICCodec.dll` (`Registry.cpp` / `DllMain.cpp` / `CR3Codec.def`):** Parameterized COM/WIC registration across `HKEY_LOCAL_MACHINE` and `HKEY_CURRENT_USER`, adding exported `DllInstall` support (`regsvr32 /s /n /i:user` and `/u /s /n /i:user`).
+  - **Setup Installer (`CR3WICCodec.iss`):** Switched from forced `PrivilegesRequired=admin` to `PrivilegesRequired=lowest` with `PrivilegesRequiredOverridesAllowed=dialog` and `{autopf}\CR3WICCodec`, letting standard non-admin Windows accounts install directly into `%LocalAppData%\Programs\CR3WICCodec` (or choose system-wide admin installation), while triggering standard UAC elevation via `ShellExec` only if Microsoft's VC++ Redistributable actually needs to be installed.
+  - **Portable `Install.exe` & `Uninstall.exe` (`install_app.cpp` / `uninstall_app.cpp` / `SetupCommon.h`):** Switched from mandatory `requireAdministrator` manifest to `asInvoker` with automatic elevation detection—standard users install cleanly into `%LocalAppData%\Programs\CR3WICCodec` + `HKCU`, and `Uninstall.exe` requests elevation only when cleaning up an existing machine-wide `HKLM` install.
+- **Streamlined Setup Wizard & Custom `.CR3` Application Icon**
+  - Set `ShowLanguageDialog=no` (uses Windows UI language automatically: German or English) and `DirExistsWarning=no` (removes the redundant "folder already exists" confirmation when upgrading or reinstalling).
+  - Added multi-resolution `assets/CR3WICCodec.ico` (16×16 through 256×256) and embedded it via `SetupIconFile` / `UninstallDisplayIcon` and `tools/Tools.rc` into Setup, `Install.exe`, `Uninstall.exe`, and `test_decoder.exe`.
+
+### Installation & Upgrading
+
+- **Fresh Install or Upgrade (Recommended)**: Download **`CR3WICCodec-Setup-x64-v1.5.0.exe`** (standard Intel/AMD Windows 10/11 PCs) or **`CR3WICCodec-Setup-arm64-v1.5.0.exe`** (Snapdragon / ARM64 Windows 11 PCs). Supports both **standard user accounts** (no admin rights needed when VC++ runtime is present) and **all-users admin installs**, overwriting previous versions cleanly.
+- **Portable**: Download **`CR3WICCodec-x64-portable.zip`** or **`CR3WICCodec-arm64-portable.zip`**, extract to a permanent folder, and run `Install.exe`.
+- **CLI Updater (Admin PowerShell, system-wide installs)**:
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\CR3WICCodec\scripts\update.ps1" -FromGitHub
+  ```
+
+### Downloads
+
+| File | Description |
+| :--- | :--- |
+| **`CR3WICCodec-Setup-x64-v1.5.0.exe`** | Windows x64 Setup Wizard (admin or per-user, auto DE/EN, custom `.CR3` icon, auto VC++ check/install) |
+| **`CR3WICCodec-Setup-arm64-v1.5.0.exe`** | Native Windows ARM64 Setup Wizard (admin or per-user, auto DE/EN, custom `.CR3` icon, auto VC++ check/install) |
+| **`CR3WICCodec-x64-portable.zip`** | Portable Windows x64 package (`CR3WICCodec.dll`, `libraw.dll`, `vcomp140.dll`, `test_decoder.exe`, `Install.exe`, `Uninstall.exe`, `scripts/`) |
+| **`CR3WICCodec-arm64-portable.zip`** | Portable native Windows ARM64 package (`CR3WICCodec.dll`, `libraw.dll`, `vcomp140.dll`, `test_decoder.exe`, `Install.exe`, `Uninstall.exe`, `scripts/`) |
+| **`SHA256SUMS.txt`** | Unified SHA-256 checksums for all x64 and ARM64 installers & archives |
+
+**Full Changelog:** [`v1.4.0...v1.5.0`](https://github.com/felix-henry/windows-cr3-raw-codec/compare/v1.4.0...v1.5.0)
+
 ## v1.4.0
 
 Platform & onboarding release introducing **native Windows ARM64 builds** (for Snapdragon / Copilot+ Windows 11 PCs) alongside **automatic Visual C++ Redistributable download & installation** right inside Setup and `Install.exe`.

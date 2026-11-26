@@ -8,7 +8,7 @@
   #define OutputDir "..\dist"
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.4.0"
+  #define AppVersion "1.5.0"
 #endif
 
 #if TargetArch == "arm64"
@@ -33,10 +33,15 @@ AppPublisher=CR3 WIC Codec Contributors
 DefaultDirName={autopf}\CR3WICCodec
 DefaultGroupName=Canon CR3 WIC RAW Codec
 DisableProgramGroupPage=yes
+DirExistsWarning=no
+ShowLanguageDialog=no
+SetupIconFile=..\assets\CR3WICCodec.ico
+UninstallDisplayIcon={uninstallexe}
 ArchitecturesAllowed={#AllowedArch}
 ArchitecturesInstallIn64BitMode={#Install64Arch}
 MinVersion=10.0.17763
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 OutputDir={#OutputDir}
 OutputBaseFilename=CR3WICCodec-Setup-{#TargetArch}-v{#AppVersion}
 Compression=lzma2/ultra64
@@ -50,7 +55,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
 [Files]
-Source: "{#SourceDir}\CR3WICCodec.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace regserver
+Source: "{#SourceDir}\CR3WICCodec.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 Source: "{#SourceDir}\libraw.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 Source: "{#SourceDir}\vcomp140.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace skipifsourcedoesntexist
 Source: "{#SourceDir}\test_decoder.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -62,11 +67,15 @@ Source: "{#SourceDir}\LICENSE.CDDL.LibRaw.txt"; DestDir: "{app}"; Flags: ignorev
 Source: "{#SourceDir}\scripts\*"; DestDir: "{app}\scripts"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Run]
-; Grant Read & Execute permissions to ALL APPLICATION PACKAGES (S-1-15-2-1)
-Filename: "{sys}\icacls.exe"; Parameters: """{app}"" /grant ""*S-1-15-2-1:(OI)(CI)(RX)"" /Q"; Flags: runhidden waituntilterminated
+; Grant Read & Execute permissions to ALL APPLICATION PACKAGES (S-1-15-2-1) when installed system-wide
+Filename: "{sys}\icacls.exe"; Parameters: """{app}"" /grant ""*S-1-15-2-1:(OI)(CI)(RX)"" /Q"; Flags: runhidden waituntilterminated; Check: IsAdminInstallMode
+; Register COM/WIC codec under HKLM (admin) or HKCU (per-user standard account)
+Filename: "{sys}\regsvr32.exe"; Parameters: "/s ""{app}\CR3WICCodec.dll"""; Flags: runhidden waituntilterminated; Check: IsAdminInstallMode
+Filename: "{sys}\regsvr32.exe"; Parameters: "/s /n /i:user ""{app}\CR3WICCodec.dll"""; Flags: runhidden waituntilterminated; Check: not IsAdminInstallMode
 
 [UninstallRun]
-Filename: "{sys}\regsvr32.exe"; Parameters: "/u /s ""{app}\CR3WICCodec.dll"""; Flags: runhidden waituntilterminated; RunOnceId: "UnregCR3WIC"
+Filename: "{sys}\regsvr32.exe"; Parameters: "/u /s ""{app}\CR3WICCodec.dll"""; Flags: runhidden waituntilterminated; RunOnceId: "UnregCR3WICAdmin"; Check: IsAdminInstallMode
+Filename: "{sys}\regsvr32.exe"; Parameters: "/u /s /n /i:user ""{app}\CR3WICCodec.dll"""; Flags: runhidden waituntilterminated; RunOnceId: "UnregCR3WICUser"; Check: not IsAdminInstallMode
 
 [Code]
 var
@@ -137,6 +146,14 @@ begin
   end;
 end;
 
+function RunElevatedOrDirect(const ExePath, Params: String; var ResultCode: Integer): Boolean;
+begin
+  if IsAdminInstallMode then
+    Result := Exec(ExePath, Params, '', SW_SHOW, ewWaitUntilTerminated, ResultCode)
+  else
+    Result := ShellExec('', ExePath, Params, '', SW_SHOW, ewWaitUntilTerminated, ResultCode);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ExePath: String;
@@ -162,7 +179,7 @@ begin
   else
     Params := '/install /passive /norestart';
 
-  if (not Exec(ExePath, Params, '', SW_SHOW, ewWaitUntilTerminated, ResultCode)) or
+  if (not RunElevatedOrDirect(ExePath, Params, ResultCode)) or
      ((ResultCode <> 0) and (ResultCode <> 3010) and (ResultCode <> 1638)) then
   begin
     if ActiveLanguage = 'german' then

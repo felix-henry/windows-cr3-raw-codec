@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CR3WICCodec VERSION 1.4.0 LANGUAGES CXX RC)
+project(CR3WICCodec VERSION 1.5.0 LANGUAGES CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "CR3WICCodec is a Windows Imaging Component (WIC) COM DLL and only supports Windows.")
@@ -142,6 +142,7 @@ endif()
 # ----------------------------------------------------------------------------
 add_executable(test_decoder
     tools/test_decoder.cpp
+    tools/Tools.rc
     src/Guid.h
 )
 
@@ -160,6 +161,12 @@ target_compile_definitions(test_decoder PRIVATE
     _UNICODE
     NOMINMAX
     WIN32_LEAN_AND_MEAN
+    CR3_VER_MAJOR=${PROJECT_VERSION_MAJOR}
+    CR3_VER_MINOR=${PROJECT_VERSION_MINOR}
+    CR3_VER_PATCH=${PROJECT_VERSION_PATCH}
+    CR3_TOOL_DESC="Canon CR3 WIC Decoder Verification Tool"
+    CR3_TOOL_INTERNAL="test_decoder"
+    CR3_TOOL_FILENAME="test_decoder.exe"
 )
 
 target_compile_options(test_decoder PRIVATE
@@ -175,17 +182,20 @@ target_link_libraries(test_decoder PRIVATE
 )
 
 # ----------------------------------------------------------------------------
-# Install.exe & Uninstall.exe - Native UAC-elevated one-click GUI installers
+# Install.exe & Uninstall.exe - Native one-click GUI installers (admin or per-user)
 # ----------------------------------------------------------------------------
 foreach(_app IN ITEMS Install Uninstall)
     if(_app STREQUAL "Install")
         set(_src tools/install_app.cpp)
+        set(_desc "Canon CR3 WIC Codec Installer")
     else()
         set(_src tools/uninstall_app.cpp)
+        set(_desc "Canon CR3 WIC Codec Uninstaller")
     endif()
 
     add_executable(${_app} WIN32
         ${_src}
+        tools/Tools.rc
         tools/SetupCommon.h
         src/Guid.h
     )
@@ -199,6 +209,12 @@ foreach(_app IN ITEMS Install Uninstall)
         _UNICODE
         NOMINMAX
         WIN32_LEAN_AND_MEAN
+        CR3_VER_MAJOR=${PROJECT_VERSION_MAJOR}
+        CR3_VER_MINOR=${PROJECT_VERSION_MINOR}
+        CR3_VER_PATCH=${PROJECT_VERSION_PATCH}
+        CR3_TOOL_DESC="${_desc}"
+        CR3_TOOL_INTERNAL="${_app}"
+        CR3_TOOL_FILENAME="${_app}.exe"
     )
     target_compile_options(${_app} PRIVATE
         /W4
@@ -213,7 +229,4 @@ foreach(_app IN ITEMS Install Uninstall)
     if(_app STREQUAL "Install")
         target_link_libraries(${_app} PRIVATE urlmon)
     endif()
-    target_link_options(${_app} PRIVATE
-        "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
-    )
 endforeach()

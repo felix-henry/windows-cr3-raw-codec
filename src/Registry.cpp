@@ -87,8 +87,11 @@ std::wstring GetModulePath(HMODULE moduleHandle)
 }
 } // namespace
 
-HRESULT RegisterCR3Codec(HMODULE moduleHandle)
+HRESULT RegisterCR3Codec(HMODULE moduleHandle, HKEY regRoot)
 {
+    if (regRoot != HKEY_LOCAL_MACHINE && regRoot != HKEY_CURRENT_USER)
+        return E_INVALIDARG;
+
     const std::wstring dllPath = GetModulePath(moduleHandle);
     if (dllPath.empty())
         return HRESULT_FROM_WIN32(GetLastError());
@@ -114,51 +117,51 @@ HRESULT RegisterCR3Codec(HMODULE moduleHandle)
 
     HRESULT hr = S_OK;
 
-    // 1. Register COM server & WIC decoder metadata under HKLM\SOFTWARE\Classes\CLSID\{...}
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), nullptr, L"Canon CR3 WIC RAW Decoder")))
+    // 1. Register COM server & WIC decoder metadata under <regRoot>\SOFTWARE\Classes\CLSID\{...}
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), nullptr, L"Canon CR3 WIC RAW Decoder")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"FriendlyName", L"Canon CR3 WIC RAW Decoder")))
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), L"FriendlyName", L"Canon CR3 WIC RAW Decoder")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, inprocKey.c_str(), nullptr, dllPath.c_str())))
+    if (FAILED(hr = SetRegString(regRoot, inprocKey.c_str(), nullptr, dllPath.c_str())))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, inprocKey.c_str(), L"ThreadingModel", L"Both")))
+    if (FAILED(hr = SetRegString(regRoot, inprocKey.c_str(), L"ThreadingModel", L"Both")))
         return hr;
 
-    if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"ArbitrationPriority", 20)))
+    if (FAILED(hr = SetRegDword(regRoot, clsidBase.c_str(), L"ArbitrationPriority", 20)))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"Author", L"CR3 WIC Codec Project")))
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), L"Author", L"CR3 WIC Codec Project")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"ColorManagementVersion", L"1.0.0.0")))
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), L"ColorManagementVersion", L"1.0.0.0")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"Description", L"Native 14-bit Canon CR3 RAW Decoder (LibRaw)")))
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), L"Description", L"Native 14-bit Canon CR3 RAW Decoder (LibRaw)")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"Version", CR3_VER_STR_W)))
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), L"Version", CR3_VER_STR_W)))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"SpecVersion", L"1.0.0.0")))
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), L"SpecVersion", L"1.0.0.0")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"Vendor", kVendorCanonCR3CodecStr)))
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), L"Vendor", kVendorCanonCR3CodecStr)))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"ContainerFormat", kContainerFormatCR3Str)))
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), L"ContainerFormat", kContainerFormatCR3Str)))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"FileExtensions", L".cr3")))
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), L"FileExtensions", L".cr3")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"MimeTypes", L"image/x-canon-cr3")))
+    if (FAILED(hr = SetRegString(regRoot, clsidBase.c_str(), L"MimeTypes", L"image/x-canon-cr3")))
         return hr;
-    if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"Flags", WICComponentUnsigned)))
+    if (FAILED(hr = SetRegDword(regRoot, clsidBase.c_str(), L"Flags", WICComponentUnsigned)))
         return hr;
-    if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"SupportAnimation", 0)))
+    if (FAILED(hr = SetRegDword(regRoot, clsidBase.c_str(), L"SupportAnimation", 0)))
         return hr;
-    if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"SupportChromaKey", 0)))
+    if (FAILED(hr = SetRegDword(regRoot, clsidBase.c_str(), L"SupportChromaKey", 0)))
         return hr;
-    if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"SupportLossless", 1)))
+    if (FAILED(hr = SetRegDword(regRoot, clsidBase.c_str(), L"SupportLossless", 1)))
         return hr;
-    if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, clsidBase.c_str(), L"SupportMultiframe", 0)))
+    if (FAILED(hr = SetRegDword(regRoot, clsidBase.c_str(), L"SupportMultiframe", 0)))
         return hr;
 
     // Supported pixel formats (24bppBGR default, 48bppBGR optional via OutputBps=16)
-    if (FAILED(hr = CreateEmptyRegKey(HKEY_LOCAL_MACHINE, format24Key.c_str())))
+    if (FAILED(hr = CreateEmptyRegKey(regRoot, format24Key.c_str())))
         return hr;
-    if (FAILED(hr = CreateEmptyRegKey(HKEY_LOCAL_MACHINE, format48Key.c_str())))
+    if (FAILED(hr = CreateEmptyRegKey(regRoot, format48Key.c_str())))
         return hr;
 
     // Pattern 0: Extended ISOBMFF Canon CR3 signature (19 matched bytes -> outscores Microsoft's 8-byte pattern)
@@ -171,60 +174,63 @@ HRESULT RegisterCR3Codec(HMODULE moduleHandle)
         0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
         0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
     };
-    if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, pattern0Key.c_str(), L"Position", 0)))
+    if (FAILED(hr = SetRegDword(regRoot, pattern0Key.c_str(), L"Position", 0)))
         return hr;
-    if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, pattern0Key.c_str(), L"Length", sizeof(kCr3ExtPattern))))
+    if (FAILED(hr = SetRegDword(regRoot, pattern0Key.c_str(), L"Length", sizeof(kCr3ExtPattern))))
         return hr;
-    if (FAILED(hr = SetRegBinary(HKEY_LOCAL_MACHINE, pattern0Key.c_str(), L"Pattern", kCr3ExtPattern, sizeof(kCr3ExtPattern))))
+    if (FAILED(hr = SetRegBinary(regRoot, pattern0Key.c_str(), L"Pattern", kCr3ExtPattern, sizeof(kCr3ExtPattern))))
         return hr;
-    if (FAILED(hr = SetRegBinary(HKEY_LOCAL_MACHINE, pattern0Key.c_str(), L"Mask", kCr3ExtMask, sizeof(kCr3ExtMask))))
+    if (FAILED(hr = SetRegBinary(regRoot, pattern0Key.c_str(), L"Mask", kCr3ExtMask, sizeof(kCr3ExtMask))))
         return hr;
 
     // Pattern 1: Fallback ISOBMFF 'ftypcrx ' signature at offset 4 (8 bytes)
     static constexpr BYTE kCr3Pattern[8] = {'f', 't', 'y', 'p', 'c', 'r', 'x', ' '};
     static constexpr BYTE kCr3Mask[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, pattern1Key.c_str(), L"Position", 4)))
+    if (FAILED(hr = SetRegDword(regRoot, pattern1Key.c_str(), L"Position", 4)))
         return hr;
-    if (FAILED(hr = SetRegDword(HKEY_LOCAL_MACHINE, pattern1Key.c_str(), L"Length", sizeof(kCr3Pattern))))
+    if (FAILED(hr = SetRegDword(regRoot, pattern1Key.c_str(), L"Length", sizeof(kCr3Pattern))))
         return hr;
-    if (FAILED(hr = SetRegBinary(HKEY_LOCAL_MACHINE, pattern1Key.c_str(), L"Pattern", kCr3Pattern, sizeof(kCr3Pattern))))
+    if (FAILED(hr = SetRegBinary(regRoot, pattern1Key.c_str(), L"Pattern", kCr3Pattern, sizeof(kCr3Pattern))))
         return hr;
-    if (FAILED(hr = SetRegBinary(HKEY_LOCAL_MACHINE, pattern1Key.c_str(), L"Mask", kCr3Mask, sizeof(kCr3Mask))))
+    if (FAILED(hr = SetRegBinary(regRoot, pattern1Key.c_str(), L"Mask", kCr3Mask, sizeof(kCr3Mask))))
         return hr;
 
     // 2. Register in WIC Bitmap Decoders category instance list
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, wicCategoryInstanceKey.c_str(), L"CLSID", kClsidCR3WICDecoderStr)))
+    if (FAILED(hr = SetRegString(regRoot, wicCategoryInstanceKey.c_str(), L"CLSID", kClsidCR3WICDecoderStr)))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, wicCategoryInstanceKey.c_str(), L"FriendlyName", L"Canon CR3 WIC RAW Decoder")))
+    if (FAILED(hr = SetRegString(regRoot, wicCategoryInstanceKey.c_str(), L"FriendlyName", L"Canon CR3 WIC RAW Decoder")))
         return hr;
 
     // 3. Associate .cr3 with Windows Photo Thumbnail Handler (uses WIC)
     static constexpr wchar_t kPhotoThumbnailProvider[] = L"{C7657C4A-9F68-40fa-A4DF-96BC08EB3551}";
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Classes\\.cr3", L"PerceivedType", L"image")))
+    if (FAILED(hr = SetRegString(regRoot, L"SOFTWARE\\Classes\\.cr3", L"PerceivedType", L"image")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Classes\\.cr3", L"Content Type", L"image/x-canon-cr3")))
+    if (FAILED(hr = SetRegString(regRoot, L"SOFTWARE\\Classes\\.cr3", L"Content Type", L"image/x-canon-cr3")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Classes\\.cr3\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}", nullptr, kPhotoThumbnailProvider)))
+    if (FAILED(hr = SetRegString(regRoot, L"SOFTWARE\\Classes\\.cr3\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}", nullptr, kPhotoThumbnailProvider)))
         return hr;
 
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Classes\\SystemFileAssociations\\.cr3", L"PerceivedType", L"image")))
+    if (FAILED(hr = SetRegString(regRoot, L"SOFTWARE\\Classes\\SystemFileAssociations\\.cr3", L"PerceivedType", L"image")))
         return hr;
-    if (FAILED(hr = SetRegString(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Classes\\SystemFileAssociations\\.cr3\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}", nullptr, kPhotoThumbnailProvider)))
+    if (FAILED(hr = SetRegString(regRoot, L"SOFTWARE\\Classes\\SystemFileAssociations\\.cr3\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}", nullptr, kPhotoThumbnailProvider)))
         return hr;
 
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
     return S_OK;
 }
 
-HRESULT UnregisterCR3Codec()
+HRESULT UnregisterCR3Codec(HKEY regRoot)
 {
+    if (regRoot != HKEY_LOCAL_MACHINE && regRoot != HKEY_CURRENT_USER)
+        return E_INVALIDARG;
+
     const std::wstring clsidBase = std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + kClsidCR3WICDecoderStr;
     const std::wstring wicCategoryInstanceKey =
         std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + kWicBitmapDecodersCategoryStr +
         L"\\Instance\\" + kClsidCR3WICDecoderStr;
 
-    HRESULT hr1 = DeleteRegTreeSafe(HKEY_LOCAL_MACHINE, wicCategoryInstanceKey.c_str());
-    HRESULT hr2 = DeleteRegTreeSafe(HKEY_LOCAL_MACHINE, clsidBase.c_str());
+    HRESULT hr1 = DeleteRegTreeSafe(regRoot, wicCategoryInstanceKey.c_str());
+    HRESULT hr2 = DeleteRegTreeSafe(regRoot, clsidBase.c_str());
 
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
 

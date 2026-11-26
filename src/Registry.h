@@ -5,5 +5,5 @@
 #endif
 #include <windows.h>
 
-HRESULT RegisterCR3Codec(HMODULE moduleHandle);
-HRESULT UnregisterCR3Codec();
+HRESULT RegisterCR3Codec(HMODULE moduleHandle, HKEY regRoot = HKEY_LOCAL_MACHINE);
+HRESULT UnregisterCR3Codec(HKEY regRoot = HKEY_LOCAL_MACHINE);

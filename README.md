@@ -25,9 +25,9 @@ Makes Windows Explorer (thumbnails, preview pane & EXIF/GPS details), Paint, and
 
 **[Download Latest Release](https://github.com/felix-henry/windows-cr3-raw-codec/releases/latest)** *(Windows 10 / 11 — native **x64** and **ARM64**)*
 
-1. **Setup Installer (`CR3WICCodec-Setup-x64-v*.exe` / `CR3WICCodec-Setup-arm64-v*.exe`):** Run the setup wizard. Missing Visual C++ 2015–2022 Redistributable runtimes are downloaded and installed automatically inside Setup. Uninstall anytime via **Windows Settings → Apps**.
-2. **Portable ZIP (`CR3WICCodec-x64-portable.zip` / `CR3WICCodec-arm64-portable.zip`):** Extract and double-click **`Install.exe`** (uses UAC elevation and offers one-click VC++ runtime auto-install if needed). Double-click **`Uninstall.exe`** to remove.
-3. **Updating:** Re-run the latest `Setup.exe` / `Install.exe` over an existing install, or run `powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\CR3WICCodec\scripts\update.ps1" -FromGitHub` in an Administrator PowerShell (selects `x64` / `arm64` and verifies `SHA256SUMS.txt` automatically).
+1. **Setup Installer (`CR3WICCodec-Setup-x64-v*.exe` / `CR3WICCodec-Setup-arm64-v*.exe`):** Run the setup wizard. Works for both **standard user accounts** (per-user install without admin rights) and **system-wide admin installs**, auto-detects Windows language, and downloads/installs missing Visual C++ 2015–2022 Redistributable runtimes automatically. Uninstall anytime via **Windows Settings → Apps**.
+2. **Portable ZIP (`CR3WICCodec-x64-portable.zip` / `CR3WICCodec-arm64-portable.zip`):** Extract and double-click **`Install.exe`** (automatically installs system-wide as Administrator or per-user into `%LocalAppData%\Programs\CR3WICCodec` without admin rights, and offers one-click VC++ runtime auto-install if needed). Double-click **`Uninstall.exe`** to remove.
+3. **Updating:** Re-run the latest `Setup.exe` / `Install.exe` over an existing install (overwrites cleanly with no extra folder prompt), or run `powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\CR3WICCodec\scripts\update.ps1" -FromGitHub` in an Administrator PowerShell for system-wide installs (selects `x64` / `arm64` and verifies `SHA256SUMS.txt` automatically).
 
 **Requirements:** Windows 10 (1809+) or Windows 11 (**x64** or **ARM64**). If offline without VC++ installed, grab [VC++ Redistributable x64](https://aka.ms/vs/17/release/vc_redist.x64.exe) or [ARM64](https://aka.ms/vs/17/release/vc_redist.arm64.exe).
 
@@ -55,6 +55,7 @@ Supports **all Canon `.CR3` cameras** supported by LibRaw, including:
 
 **Built for Canon photographers on Windows 10 / 11** · **[felixhenry.de](https://felixhenry.de)**
 
-<sub>[MIT License](LICENSE) · Powered by [LibRaw](https://www.libraw.org/) (LGPL 2.1 / CDDL 1.0) · [Third-Party Notices](THIRD_PARTY_NOTICES.md)</sub>
+<sub>[MIT License](LICENSE) · Powered by [LibRaw](https://www.libraw.org/) (LGPL 2.1 / CDDL 1.0) · [Third-Party Notices](THIRD_PARTY_NOTICES.md)</sub>  
+<sub>Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org)</sub>
 
 </div>

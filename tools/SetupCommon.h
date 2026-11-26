@@ -6,6 +6,7 @@
 #include <windows.h>
 #include <aclapi.h>
 #include <sddl.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <string>
 #include <vector>
@@ -41,6 +42,11 @@ inline std::wstring GetExecutableDir()
     return (slash == std::wstring::npos) ? std::wstring{} : path.substr(0, slash);
 }
 
+inline bool IsProcessElevated()
+{
+    return IsUserAnAdmin() != FALSE;
+}
+
 inline std::wstring GetProgramFilesInstallDir()
 {
     PWSTR rawPath = nullptr;
@@ -51,6 +57,71 @@ inline std::wstring GetProgramFilesInstallDir()
         return result;
     }
     return L"C:\\Program Files\\CR3WICCodec";
+}
+
+inline std::wstring GetPerUserInstallDir()
+{
+    PWSTR rawPath = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &rawPath)) && rawPath)
+    {
+        std::wstring result = std::wstring(rawPath) + L"\\Programs\\CR3WICCodec";
+        CoTaskMemFree(rawPath);
+        return result;
+    }
+    return L"CR3WICCodec";
+}
+
+inline int EnsureDirRecursive(const std::wstring& path)
+{
+    return SHCreateDirectoryExW(nullptr, path.c_str(), nullptr);
+}
+
+inline std::wstring ReadRegisteredDllPath(HKEY root)
+{
+    const std::wstring keyPath = std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + kClsidCR3WICDecoderStr + L"\\InprocServer32";
+    wchar_t buf[MAX_PATH * 2]{};
+    DWORD size = sizeof(buf);
+    if (RegGetValueW(
+            root,
+            keyPath.c_str(),
+            nullptr,
+            RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ,
+            nullptr,
+            buf,
+            &size) == ERROR_SUCCESS)
+    {
+        return std::wstring(buf);
+    }
+    return {};
+}
+
+inline bool RunShellProcessWait(const std::wstring& exePath, const std::wstring& params, bool runAsAdmin, DWORD& exitCode)
+{
+    SHELLEXECUTEINFOW sei{};
+    sei.cbSize = sizeof(sei);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.lpVerb = runAsAdmin ? L"runas" : nullptr;
+    sei.lpFile = exePath.c_str();
+    sei.lpParameters = params.empty() ? nullptr : params.c_str();
+    sei.nShow = SW_SHOW;
+
+    if (!ShellExecuteExW(&sei))
+    {
+        exitCode = GetLastError();
+        return false;
+    }
+
+    if (sei.hProcess)
+    {
+        WaitForSingleObject(sei.hProcess, INFINITE);
+        GetExitCodeProcess(sei.hProcess, &exitCode);
+        CloseHandle(sei.hProcess);
+    }
+    else
+    {
+        exitCode = 0;
+    }
+    return true;
 }
 
 inline bool FileExists(const std::wstring& path)
