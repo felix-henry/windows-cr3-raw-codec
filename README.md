@@ -35,7 +35,20 @@ Supports **all Canon `.CR3` cameras** supported by LibRaw, including:
 
 ---
 
-## Documentation & License
+## Documentation
 
 - **[Wiki — Technical Guide, Build Instructions, Registry Tuning & Troubleshooting](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)**
-- **License:** [MIT License](LICENSE) · LibRaw (`libraw.dll`) under LGPL 2.1 / CDDL 1.0 ([THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md))
+
+---
+
+<div align="center">
+
+[![Website](https://img.shields.io/badge/Website-felixhenry.de-111827?style=for-the-badge&labelColor=1f2937&color=0284c7)](https://felixhenry.de)
+[![Latest Release](https://img.shields.io/github/v/release/felix-henry/windows-cr3-raw-codec?style=for-the-badge&label=Download&color=16a34a)](https://github.com/felix-henry/windows-cr3-raw-codec/releases/latest)
+[![Wiki](https://img.shields.io/badge/Docs-Wiki-6366f1?style=for-the-badge)](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)
+
+**Built for Canon photographers on Windows 10 / 11** · **[felixhenry.de](https://felixhenry.de)**
+
+<sub>[MIT License](LICENSE) · Powered by [LibRaw](https://www.libraw.org/) (LGPL 2.1 / CDDL 1.0) · [Third-Party Notices](THIRD_PARTY_NOTICES.md)</sub>
+
+</div>
