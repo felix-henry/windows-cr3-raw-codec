@@ -1,17 +1,30 @@
 #include "SetupCommon.h"
 #include <shellapi.h>
+#include <urlmon.h>
 
 namespace
 {
-bool IsVCRedistX64Installed()
+#if defined(_M_ARM64)
+inline constexpr wchar_t kVcRegSubKey[] = L"SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\ARM64";
+inline constexpr wchar_t kVcDownloadUrl[] = L"https://aka.ms/vs/17/release/vc_redist.arm64.exe";
+inline constexpr wchar_t kVcTempFileName[] = L"vc_redist.arm64.exe";
+inline constexpr wchar_t kArchLabel[] = L"ARM64";
+#else
+inline constexpr wchar_t kVcRegSubKey[] = L"SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64";
+inline constexpr wchar_t kVcDownloadUrl[] = L"https://aka.ms/vs/17/release/vc_redist.x64.exe";
+inline constexpr wchar_t kVcTempFileName[] = L"vc_redist.x64.exe";
+inline constexpr wchar_t kArchLabel[] = L"x64";
+#endif
+
+bool IsVCRedistInstalled()
 {
     DWORD installed = 0;
     DWORD size = sizeof(installed);
     if (RegGetValueW(
             HKEY_LOCAL_MACHINE,
-            L"SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64",
+            kVcRegSubKey,
             L"Installed",
-            RRF_RT_REG_DWORD,
+            RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY,
             nullptr,
             &installed,
             &size) == ERROR_SUCCESS &&
@@ -28,6 +41,29 @@ bool IsVCRedistX64Installed()
             return true;
     }
     return false;
+}
+
+bool DownloadAndInstallVCRedist()
+{
+    wchar_t tempDir[MAX_PATH]{};
+    const DWORD tempLen = GetTempPathW(MAX_PATH, tempDir);
+    if (tempLen == 0 || tempLen >= MAX_PATH)
+        return false;
+
+    const std::wstring installerPath = std::wstring(tempDir) + kVcTempFileName;
+    DeleteFileW(installerPath.c_str());
+
+    const HRESULT dlHr = URLDownloadToFileW(nullptr, kVcDownloadUrl, installerPath.c_str(), 0, nullptr);
+    if (FAILED(dlHr) || !cr3setup::FileExists(installerPath))
+        return false;
+
+    const std::wstring cmdLine = L"\"" + installerPath + L"\" /install /passive /norestart";
+    DWORD exitCode = 1;
+    const bool launched = cr3setup::RunProcessSilent(cmdLine, exitCode);
+    DeleteFileW(installerPath.c_str());
+
+    // 0 = success, 3010 = reboot required (runtime files usable immediately), 1638 = newer version already present
+    return launched && (exitCode == 0 || exitCode == 3010 || exitCode == 1638) && IsVCRedistInstalled();
 }
 
 std::wstring ResolveSourceDir(const std::wstring& exeDir)
@@ -86,25 +122,50 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         return 1;
     }
 
-    if (!IsVCRedistX64Installed())
+    if (!IsVCRedistInstalled())
     {
+        const std::wstring promptMsg =
+            std::wstring(cr3setup::L(
+                L"Microsoft Visual C++ 2015-2022 Redistributable (",
+                L"Microsoft Visual C++ 2015-2022 Redistributable (")) +
+            kArchLabel +
+            cr3setup::L(
+                L") is not installed.\nLibRaw requires this runtime library.\n\n"
+                L"Download and install it automatically from Microsoft now?",
+                L") ist nicht installiert.\nLibRaw benoetigt diese Laufzeitbibliothek.\n\n"
+                L"Jetzt automatisch von Microsoft herunterladen und installieren?");
+
         const int choice = MessageBoxW(
             nullptr,
-            cr3setup::L(
-                L"Microsoft Visual C++ 2015-2022 Redistributable (x64) is not installed.\n"
-                L"LibRaw requires this runtime library.\n\n"
-                L"Open the official Microsoft download page now?",
-                L"Microsoft Visual C++ 2015-2022 Redistributable (x64) ist nicht installiert.\n"
-                L"LibRaw benoetigt diese Laufzeitbibliothek.\n\n"
-                L"Soll die offizielle Microsoft-Downloadseite jetzt geoeffnet werden?"),
+            promptMsg.c_str(),
             cr3setup::kAppTitle,
             MB_YESNO | MB_ICONWARNING);
         if (choice == IDYES)
         {
-            ShellExecuteW(nullptr, L"open", L"https://aka.ms/vs/17/release/vc_redist.x64.exe", nullptr, nullptr, SW_SHOWNORMAL);
+            if (!DownloadAndInstallVCRedist())
+            {
+                const int openBrowser = MessageBoxW(
+                    nullptr,
+                    cr3setup::L(
+                        L"Automatic download or installation failed (e.g. offline).\n\n"
+                        L"Open the official Microsoft download page in your browser instead?",
+                        L"Automatischer Download oder Installation ist fehlgeschlagen (z. B. offline).\n\n"
+                        L"Stattdessen die offizielle Microsoft-Downloadseite im Browser oeffnen?"),
+                    cr3setup::kAppTitle,
+                    MB_YESNO | MB_ICONERROR);
+                if (openBrowser == IDYES)
+                {
+                    ShellExecuteW(nullptr, L"open", kVcDownloadUrl, nullptr, nullptr, SW_SHOWNORMAL);
+                }
+                CoUninitialize();
+                return 1;
+            }
         }
-        CoUninitialize();
-        return 1;
+        else
+        {
+            CoUninitialize();
+            return 1;
+        }
     }
 
     const std::wstring targetDir = cr3setup::GetProgramFilesInstallDir();

@@ -33,11 +33,19 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 # 2. Check VC++ Runtime & Microsoft Raw Image Extension
 Write-Host (T "[1/5] Checking prerequisites..." "[1/5] Pruefe Systemvoraussetzungen...") -ForegroundColor Cyan
-$vcRuntimeKey = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+$isArm64 = $false
+try {
+    $isArm64 = ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant() -eq "arm64")
+} catch {
+    $isArm64 = ($env:PROCESSOR_ARCHITECTURE -ieq "ARM64")
+}
+$vcArchLabel = if ($isArm64) { "ARM64" } else { "x64" }
+$vcRedistUrl = if ($isArm64) { "https://aka.ms/vs/17/release/vc_redist.arm64.exe" } else { "https://aka.ms/vs/17/release/vc_redist.x64.exe" }
+$vcRuntimeKey = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\$vcArchLabel"
 $vcInstalled = (Test-Path $vcRuntimeKey) -and ((Get-ItemProperty -Path $vcRuntimeKey -ErrorAction SilentlyContinue).Installed -eq 1)
 if (-not $vcInstalled -and -not (Test-Path "$env:SystemRoot\System32\vcruntime140_1.dll")) {
-    Write-Warning (T "Microsoft Visual C++ 2015-2022 Redistributable (x64) does not appear to be installed." "Microsoft Visual C++ 2015-2022 Redistributable (x64) scheint nicht installiert zu sein.")
-    Write-Warning (T "If the codec fails to load, install: https://aka.ms/vs/17/release/vc_redist.x64.exe" "Falls der Codec nicht laedt, installiere: https://aka.ms/vs/17/release/vc_redist.x64.exe")
+    Write-Warning (T "Microsoft Visual C++ 2015-2022 Redistributable ($vcArchLabel) does not appear to be installed." "Microsoft Visual C++ 2015-2022 Redistributable ($vcArchLabel) scheint nicht installiert zu sein.")
+    Write-Warning (T "If the codec fails to load, install: $vcRedistUrl" "Falls der Codec nicht laedt, installiere: $vcRedistUrl")
 }
 
 try {

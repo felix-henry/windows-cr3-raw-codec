@@ -1,4 +1,4 @@
-name: Build and Release Windows x64
+name: Build and Release Windows (x64 & ARM64)
 
 on:
   push:
@@ -12,36 +12,41 @@ permissions:
   contents: write
 
 jobs:
-  build-x64:
-    runs-on: windows-latest
+  build:
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup MSVC x64 developer environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+      - name: Ensure Inno Setup 6 is installed
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
 
       - name: Clone latest LibRaw
         shell: pwsh
         run: |
           git clone --depth 1 https://github.com/LibRaw/LibRaw.git third_party/LibRaw
 
-      - name: Build LibRaw (x64, OpenMP, universal SSE2)
-        shell: cmd
+      - name: Build LibRaw, CR3WICCodec & packages (${{ matrix.arch }})
+        shell: pwsh
         run: |
-          cd third_party\LibRaw
-          nmake -f Makefile.msvc "COPT_OPT=/openmp" bin\libraw.dll lib\libraw.lib
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Arch ${{ matrix.arch }} -Package
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Configure and build CR3WICCodec
-        shell: cmd
-        run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build build
-
-      - name: Run WIC decoder smoke test on CC0 CR3 sample
+      - name: Run WIC decoder smoke test on CC0 CR3 sample (${{ matrix.arch }})
         shell: pwsh
         run: |
           $sample = ".\docs\images\canon-eos-r6-mark-iii-sample.CR3"
@@ -54,30 +59,51 @@ jobs:
           }
           Remove-Item ".\build\ci_smoke*.png" -Force -ErrorAction SilentlyContinue
 
-      - name: Ensure Inno Setup 6 is installed
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
-            choco install innosetup -y --no-progress
-          }
-
-      - name: Package portable ZIP and Inno Setup installer
-        shell: pwsh
-        run: |
-          powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Package
-
-      - name: Upload build artifacts
+      - name: Upload build artifacts (${{ matrix.arch }})
         uses: actions/upload-artifact@v4
         with:
-          name: CR3WICCodec-x64
+          name: CR3WICCodec-${{ matrix.arch }}
           path: |
             dist/*.zip
             dist/*.exe
             dist/SHA256SUMS.txt
 
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download x64 & ARM64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: CR3WICCodec-*
+          path: release-artifacts
+
+      - name: Merge release files and generate unified SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist" | Out-Null
+          Get-ChildItem -Path "release-artifacts" -Recurse -File | Where-Object { $_.Extension -in @(".zip", ".exe") } | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination "dist\$($_.Name)" -Force
+          }
+          $hashLines = Get-ChildItem -Path "dist" -File | Where-Object { $_.Extension -in @(".zip", ".exe") } | Sort-Object Name | ForEach-Object {
+            $h = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$h  $($_.Name)"
+          }
+          if (-not $hashLines) {
+            Write-Error "No release binaries found in dist/."
+            exit 1
+          }
+          Set-Content -Path "dist\SHA256SUMS.txt" -Value $hashLines -Encoding ASCII
+          Get-Content "dist\SHA256SUMS.txt"
+
       - name: Extract release notes from CHANGELOG.md
         id: changelog
-        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
@@ -116,7 +142,7 @@ jobs:
           }
 
       - name: Publish GitHub Release (from CHANGELOG.md)
-        if: startsWith(github.ref, 'refs/tags/v') && steps.changelog.outputs.has_notes == 'true'
+        if: steps.changelog.outputs.has_notes == 'true'
         uses: softprops/action-gh-release@v2
         with:
           body_path: build/release-notes.md
@@ -126,7 +152,7 @@ jobs:
             dist/SHA256SUMS.txt
 
       - name: Publish GitHub Release (auto-generated fallback)
-        if: startsWith(github.ref, 'refs/tags/v') && steps.changelog.outputs.has_notes != 'true'
+        if: steps.changelog.outputs.has_notes != 'true'
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true

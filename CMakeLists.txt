@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CR3WICCodec VERSION 1.3.1 LANGUAGES CXX RC)
+project(CR3WICCodec VERSION 1.4.0 LANGUAGES CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "CR3WICCodec is a Windows Imaging Component (WIC) COM DLL and only supports Windows.")
@@ -210,6 +210,9 @@ foreach(_app IN ITEMS Install Uninstall)
         shell32
         advapi32
     )
+    if(_app STREQUAL "Install")
+        target_link_libraries(${_app} PRIVATE urlmon)
+    endif()
     target_link_options(${_app} PRIVATE
         "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
     )

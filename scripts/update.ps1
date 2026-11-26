@@ -123,9 +123,21 @@ try {
             return
         }
 
-        $zipAsset = $release.assets | Where-Object { $_.name -like "*portable*.zip" } | Select-Object -First 1
+        $targetArch = "x64"
+        try {
+            if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant() -eq "arm64") {
+                $targetArch = "arm64"
+            }
+        } catch {
+            if ($env:PROCESSOR_ARCHITECTURE -ieq "ARM64") { $targetArch = "arm64" }
+        }
+
+        $zipAsset = $release.assets | Where-Object { $_.name -like "*$targetArch*portable*.zip" } | Select-Object -First 1
+        if (-not $zipAsset -and $targetArch -eq "x64") {
+            $zipAsset = $release.assets | Where-Object { $_.name -like "*portable*.zip" -and $_.name -notlike "*arm64*" } | Select-Object -First 1
+        }
         if (-not $zipAsset) {
-            Write-Error (T "No portable ZIP asset found in release $($release.tag_name)." "Kein portables ZIP-Asset im Release $($release.tag_name) gefunden.")
+            Write-Error (T "No portable ZIP asset ($targetArch) found in release $($release.tag_name)." "Kein portables ZIP-Asset ($targetArch) im Release $($release.tag_name) gefunden.")
             exit 1
         }
 

@@ -3,6 +3,40 @@
 All notable changes to **Canon CR3 Native WIC Codec** are documented in this file.
 On tagged releases (`v*`), GitHub Actions automatically extracts the matching `## vX.Y.Z` section as the GitHub Release body.
 
+## v1.4.0
+
+Platform & onboarding release introducing **native Windows ARM64 builds** (for Snapdragon / Copilot+ Windows 11 PCs) alongside **automatic Visual C++ Redistributable download & installation** right inside Setup and `Install.exe`.
+
+### What's New in v1.4.0
+
+- **Native Windows 11 ARM64 Support**
+  - GitHub Actions now builds and tests both **x64** (`windows-latest`) and native **ARM64** (`windows-11-arm`) toolchains—including native ARM64 `libraw.dll` with OpenMP, `CR3WICCodec.dll`, `Install.exe`, `Uninstall.exe`, `test_decoder.exe`, and Inno Setup installers—with automated WIC smoke tests on native hardware for both architectures.
+  - `scripts/build.ps1` now supports `-Arch auto|x64|arm64`, and `scripts/update.ps1` automatically selects `*arm64*portable*.zip` on ARM64 Windows vs. `*x64*portable*.zip` on x64 Windows.
+- **Automatic Microsoft VC++ Redistributable Download & Installation**
+  - **Setup Installer (`CR3WICCodec.iss`):** If the Microsoft Visual C++ 2015–2022 Redistributable (`x64` or `ARM64`) is missing, the Setup wizard now downloads the official Microsoft installer directly via a built-in download page and installs it (`/install /passive /norestart`) in `PrepareToInstall` before registering `CR3WICCodec.dll` (with browser fallback if offline).
+  - **Portable `Install.exe` (`install_app.cpp`):** Offers one-click automatic download (`URLDownloadToFileW`) and installation of `vc_redist.x64.exe` / `vc_redist.arm64.exe`, then proceeds seamlessly with codec installation.
+
+### Installation & Upgrading
+
+- **Upgrade from an earlier version** directly in an Administrator PowerShell (selects `x64` / `arm64` automatically):
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\CR3WICCodec\scripts\update.ps1" -FromGitHub
+  ```
+- **Fresh Install (Recommended)**: Download **`CR3WICCodec-Setup-x64-v1.4.0.exe`** (Windows x64) or **`CR3WICCodec-Setup-arm64-v1.4.0.exe`** (Windows ARM64). Missing VC++ runtimes are installed automatically.
+- **Portable**: Download **`CR3WICCodec-x64-portable.zip`** or **`CR3WICCodec-arm64-portable.zip`**, extract to a permanent folder, and run `Install.exe`.
+
+### Downloads
+
+| File | Description |
+| :--- | :--- |
+| **`CR3WICCodec-Setup-x64-v1.4.0.exe`** | Windows x64 Setup Wizard (DE/EN) with automatic VC++ runtime download/install & Uninstaller entry |
+| **`CR3WICCodec-Setup-arm64-v1.4.0.exe`** | Native Windows ARM64 Setup Wizard (DE/EN) for Snapdragon / Copilot+ PCs with automatic VC++ runtime download/install |
+| **`CR3WICCodec-x64-portable.zip`** | Portable Windows x64 package (`CR3WICCodec.dll`, `libraw.dll`, `vcomp140.dll`, `test_decoder.exe`, `Install.exe`, `Uninstall.exe`, `scripts/`) |
+| **`CR3WICCodec-arm64-portable.zip`** | Portable native Windows ARM64 package (`CR3WICCodec.dll`, `libraw.dll`, `vcomp140.dll`, `test_decoder.exe`, `Install.exe`, `Uninstall.exe`, `scripts/`) |
+| **`SHA256SUMS.txt`** | Unified SHA-256 checksums for all x64 and ARM64 installers & archives |
+
+**Full Changelog:** [`v1.3.1...v1.4.0`](https://github.com/felix-henry/windows-cr3-raw-codec/compare/v1.3.1...v1.4.0)
+
 ## v1.3.1
 
 Maintenance & packaging polish ensuring the PowerShell updater (`scripts\update.ps1`) is always bundled by the Setup installer and `Install.exe`, fixing self-update detection when invoked from the install directory, and cleaning up fallback pixel-copy code.

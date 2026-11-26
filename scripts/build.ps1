@@ -1,14 +1,18 @@
 <#
 .SYNOPSIS
-    Baut LibRaw (x64, OpenMP), CR3WICCodec.dll, test_decoder.exe und optional ein Release-Paket in dist\.
+    Baut LibRaw (OpenMP), CR3WICCodec.dll, test_decoder.exe, Install.exe, Uninstall.exe und optional Release-Pakete in dist\.
 .PARAMETER LibRawPath
     Optionaler Pfad zu einem bereits vorhandenen LibRaw-Verzeichnis (Standard: third_party\LibRaw).
+.PARAMETER Arch
+    Zielarchitektur: auto (Standard, erkennt Host-OS), x64 oder arm64.
 .PARAMETER Package
-    Erstellt zusaetzlich ein portables ZIP-Archiv (und falls Inno Setup installiert ist, den Setup-Installer) unter dist\.
+    Erstellt zusaetzlich ein portables ZIP-Archiv, Inno-Setup-Installer (falls ISCC installiert ist) und SHA256SUMS.txt unter dist\.
 #>
 [CmdletBinding()]
 param(
     [string]$LibRawPath = "",
+    [ValidateSet("auto", "x64", "arm64")]
+    [string]$Arch = "auto",
     [switch]$Package
 )
 
@@ -19,24 +23,44 @@ if ([string]::IsNullOrWhiteSpace($LibRawPath)) {
     $LibRawPath = Join-Path $RepoRoot "third_party\LibRaw"
 }
 
+$HostArch = "x64"
+try {
+    $osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+    if ($osArch -eq "arm64") { $HostArch = "arm64" }
+} catch {
+    if ($env:PROCESSOR_ARCHITECTURE -ieq "ARM64") { $HostArch = "arm64" }
+}
+
+if ($Arch -eq "auto") {
+    $Arch = $HostArch
+}
+
 # 1. Visual Studio Build Tools finden
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (-not (Test-Path $vswhere)) {
-    Write-Error "vswhere.exe nicht gefunden. Bitte Visual Studio 2022 (mit C++-Desktopentwicklung) installieren."
+    Write-Error "vswhere.exe nicht gefunden. Bitte Visual Studio 2022/2026 (mit C++-Desktopentwicklung) installieren."
     exit 1
 }
 
-$vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
+$reqComponent = if ($Arch -eq "arm64") { "Microsoft.VisualStudio.Component.VC.Tools.ARM64" } else { "Microsoft.VisualStudio.Component.VC.Tools.x86.x64" }
+$vsPath = & $vswhere -latest -products * -requires $reqComponent -property installationPath | Select-Object -First 1
 if ([string]::IsNullOrWhiteSpace($vsPath)) {
-    Write-Error "Keine Visual Studio C++ x64 Toolchain gefunden."
+    $vsPath = & $vswhere -latest -products * -property installationPath | Select-Object -First 1
+}
+if ([string]::IsNullOrWhiteSpace($vsPath)) {
+    Write-Error "Keine passende Visual Studio C++ Toolchain ($Arch) gefunden."
     exit 1
 }
 
-$vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars64.bat"
-if (-not (Test-Path $vcvars)) {
-    Write-Error "vcvars64.bat nicht gefunden unter: $vcvars"
+$vsDevCmd = Join-Path $vsPath "Common7\Tools\VsDevCmd.bat"
+if (-not (Test-Path $vsDevCmd)) {
+    Write-Error "VsDevCmd.bat nicht gefunden unter: $vsDevCmd"
     exit 1
 }
+
+$vcTargetArg = if ($Arch -eq "arm64") { "arm64" } else { "amd64" }
+$vcHostArg = if ($HostArch -eq "arm64") { "arm64" } else { "amd64" }
+$vcInitCmd = "`"$vsDevCmd`" -no_logo -arch=$vcTargetArg -host_arch=$vcHostArg"
 
 # 2. LibRaw klonen falls nicht vorhanden
 if (-not (Test-Path $LibRawPath)) {
@@ -48,35 +72,36 @@ if (-not (Test-Path $LibRawPath)) {
     Write-Host "[1/4] Verwende LibRaw unter: $LibRawPath" -ForegroundColor Gray
 }
 
-# 3. LibRaw mit OpenMP (universal x64 SSE2, ohne AVX2) bauen
+# 3. LibRaw mit OpenMP (universal x64 SSE2 bzw. nativ ARM64) bauen
 $librawDll = Join-Path $LibRawPath "bin\libraw.dll"
 $librawLib = Join-Path $LibRawPath "lib\libraw.lib"
-Write-Host "[2/4] Baue LibRaw x64 mit OpenMP..." -ForegroundColor Cyan
-$nmakeCmd = "`"$vcvars`" && cd /d `"$LibRawPath`" && nmake -f Makefile.msvc `"COPT_OPT=/openmp`" bin\libraw.dll lib\libraw.lib"
+Write-Host "[2/4] Baue LibRaw ($Arch) mit OpenMP..." -ForegroundColor Cyan
+$nmakeCmd = "$vcInitCmd && cd /d `"$LibRawPath`" && nmake -f Makefile.msvc `"COPT_OPT=/openmp`" bin\libraw.dll lib\libraw.lib"
 cmd /c $nmakeCmd
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $librawDll) -or -not (Test-Path $librawLib)) {
-    Write-Error "LibRaw-Build fehlgeschlagen."
+    Write-Error "LibRaw-Build ($Arch) fehlgeschlagen."
     exit 1
 }
 
 # 4. CMake Configure & Build
-Write-Host "[3/4] Konfiguriere und baue CR3WICCodec.dll & test_decoder.exe..." -ForegroundColor Cyan
+Write-Host "[3/4] Konfiguriere und baue CR3WICCodec ($Arch)..." -ForegroundColor Cyan
 $buildDir = Join-Path $RepoRoot "build"
-$cmakeCmd = "`"$vcvars`" && cmake -S `"$RepoRoot`" -B `"$buildDir`" -G Ninja -DCMAKE_BUILD_TYPE=Release -DLIBRAW_ROOT=`"$LibRawPath`" && cmake --build `"$buildDir`""
+$sysProcArg = if ($Arch -eq "arm64") { "-DCMAKE_SYSTEM_PROCESSOR=ARM64" } else { "-DCMAKE_SYSTEM_PROCESSOR=AMD64" }
+$cmakeCmd = "$vcInitCmd && cmake -S `"$RepoRoot`" -B `"$buildDir`" -G Ninja -DCMAKE_BUILD_TYPE=Release $sysProcArg -DLIBRAW_ROOT=`"$LibRawPath`" && cmake --build `"$buildDir`""
 cmd /c $cmakeCmd
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "CMake-Build fehlgeschlagen."
+    Write-Error "CMake-Build ($Arch) fehlgeschlagen."
     exit 1
 }
 
 $binDir = Join-Path $buildDir "bin"
-Write-Host "   Build erfolgreich: $binDir" -ForegroundColor Green
+Write-Host "   Build erfolgreich ($Arch): $binDir" -ForegroundColor Green
 
 # 5. Optionales Release-Paket erstellen
 if ($Package) {
-    Write-Host "[4/4] Erstelle Release-Paket unter dist\..." -ForegroundColor Cyan
+    Write-Host "[4/4] Erstelle Release-Paket ($Arch) unter dist\..." -ForegroundColor Cyan
     $distDir = Join-Path $RepoRoot "dist"
-    $stageDir = Join-Path $distDir "CR3WICCodec-x64"
+    $stageDir = Join-Path $distDir "CR3WICCodec-$Arch"
     Remove-Item -Path $stageDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force $stageDir | Out-Null
     New-Item -ItemType Directory -Force (Join-Path $stageDir "scripts") | Out-Null
@@ -102,7 +127,7 @@ if ($Package) {
         }
     }
 
-    $zipPath = Join-Path $distDir "CR3WICCodec-x64-portable.zip"
+    $zipPath = Join-Path $distDir "CR3WICCodec-$Arch-portable.zip"
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
     Compress-Archive -Path "$stageDir\*" -DestinationPath $zipPath
     Write-Host "   Portable ZIP erstellt: $zipPath" -ForegroundColor Green
@@ -113,9 +138,9 @@ if ($Package) {
         if (Test-Path $isccCandidate) { $iscc = $isccCandidate }
     }
     if ($iscc) {
-        & $iscc "/DSourceDir=$stageDir" "/DOutputDir=$distDir" (Join-Path $RepoRoot "installer\CR3WICCodec.iss")
+        & $iscc "/DTargetArch=$Arch" "/DSourceDir=$stageDir" "/DOutputDir=$distDir" (Join-Path $RepoRoot "installer\CR3WICCodec.iss")
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        Write-Host "   Inno Setup Installer erstellt unter: $distDir" -ForegroundColor Green
+        Write-Host "   Inno Setup Installer ($Arch) erstellt unter: $distDir" -ForegroundColor Green
     } else {
         Write-Host "   Hinweis: Inno Setup 6 (ISCC.exe) nicht gefunden - nur Portable-ZIP erstellt." -ForegroundColor Yellow
     }

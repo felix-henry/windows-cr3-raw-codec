@@ -1,11 +1,28 @@
+#ifndef TargetArch
+  #define TargetArch "x64"
+#endif
 #ifndef SourceDir
-  #define SourceDir "..\dist\CR3WICCodec-x64"
+  #define SourceDir "..\dist\CR3WICCodec-" + TargetArch
 #endif
 #ifndef OutputDir
   #define OutputDir "..\dist"
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.3.1"
+  #define AppVersion "1.4.0"
+#endif
+
+#if TargetArch == "arm64"
+  #define AllowedArch "arm64"
+  #define Install64Arch "arm64"
+  #define VCRedistRegArch "ARM64"
+  #define VCRedistExe "vc_redist.arm64.exe"
+  #define VCRedistUrl "https://aka.ms/vs/17/release/vc_redist.arm64.exe"
+#else
+  #define AllowedArch "x64compatible"
+  #define Install64Arch "x64compatible"
+  #define VCRedistRegArch "x64"
+  #define VCRedistExe "vc_redist.x64.exe"
+  #define VCRedistUrl "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 #endif
 
 [Setup]
@@ -16,12 +33,12 @@ AppPublisher=CR3 WIC Codec Contributors
 DefaultDirName={autopf}\CR3WICCodec
 DefaultGroupName=Canon CR3 WIC RAW Codec
 DisableProgramGroupPage=yes
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed={#AllowedArch}
+ArchitecturesInstallIn64BitMode={#Install64Arch}
 MinVersion=10.0.17763
 PrivilegesRequired=admin
 OutputDir={#OutputDir}
-OutputBaseFilename=CR3WICCodec-Setup-x64-v{#AppVersion}
+OutputBaseFilename=CR3WICCodec-Setup-{#TargetArch}-v{#AppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -52,28 +69,109 @@ Filename: "{sys}\icacls.exe"; Parameters: """{app}"" /grant ""*S-1-15-2-1:(OI)(C
 Filename: "{sys}\regsvr32.exe"; Parameters: "/u /s ""{app}\CR3WICCodec.dll"""; Flags: runhidden waituntilterminated; RunOnceId: "UnregCR3WIC"
 
 [Code]
+var
+  DownloadPage: TDownloadWizardPage;
+
 function IsVCRedistInstalled(): Boolean;
 var
   Installed: Cardinal;
 begin
-  Result := RegQueryDWordValue(HKLM64, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', Installed) and (Installed = 1);
+  Result := RegQueryDWordValue(HKLM64, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\{#VCRedistRegArch}', 'Installed', Installed) and (Installed = 1);
   if not Result then
     Result := FileExists(ExpandConstant('{sys}\vcruntime140_1.dll'));
 end;
 
-function InitializeSetup(): Boolean;
+procedure InitializeWizard;
+begin
+  if ActiveLanguage = 'german' then
+    DownloadPage := CreateDownloadPage(
+      'Microsoft VC++ Runtime herunterladen',
+      'LibRaw benoetigt die Visual C++ 2015-2022 Redistributable ({#VCRedistRegArch}). Wird automatisch heruntergeladen...',
+      nil)
+  else
+    DownloadPage := CreateDownloadPage(
+      'Downloading Microsoft VC++ Runtime',
+      'LibRaw requires the Visual C++ 2015-2022 Redistributable ({#VCRedistRegArch}). Downloading automatically...',
+      nil);
+  DownloadPage.ShowBaseNameInsteadOfUrl := True;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
 var
-  ErrorCode: Integer;
+  ErrMsg: String;
+  PromptText: String;
+  DummyCode: Integer;
 begin
   Result := True;
-  if not IsVCRedistInstalled() then
+  if (CurPageID = wpReady) and (not IsVCRedistInstalled()) then
   begin
-    if MsgBox(
-      'Microsoft Visual C++ 2015-2022 Redistributable (x64) was not detected.'#13#10 +
-      'LibRaw requires it to run. Open the official Microsoft download page now?',
-      mbConfirmation, MB_YESNO) = IDYES then
-    begin
-      ShellExec('open', 'https://aka.ms/vs/17/release/vc_redist.x64.exe', '', '', SW_SHOW, ewNoWait, ErrorCode);
+    DownloadPage.Clear;
+    DownloadPage.Add('{#VCRedistUrl}', '{#VCRedistExe}', '');
+    DownloadPage.Show;
+    try
+      try
+        DownloadPage.Download;
+      except
+        ErrMsg := GetExceptionMessage;
+        if ActiveLanguage = 'german' then
+          PromptText :=
+            'Der automatische Download der Visual C++ Redistributable ({#VCRedistRegArch}) ist fehlgeschlagen:'#13#10 +
+            ErrMsg + #13#10#13#10 +
+            'Soll die offizielle Microsoft-Downloadseite stattdessen im Browser geoeffnet werden?'
+        else
+          PromptText :=
+            'Failed to automatically download the Visual C++ Redistributable ({#VCRedistRegArch}):'#13#10 +
+            ErrMsg + #13#10#13#10 +
+            'Open the official Microsoft download page in your browser instead?';
+
+        if not WizardSilent() then
+        begin
+          if SuppressibleMsgBox(PromptText, mbError, MB_YESNO, IDNO) = IDYES then
+            ShellExec('open', '{#VCRedistUrl}', '', '', SW_SHOW, ewNoWait, DummyCode);
+        end;
+        Result := False;
+      end;
+    finally
+      DownloadPage.Hide;
     end;
   end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ExePath: String;
+  Params: String;
+  ResultCode: Integer;
+begin
+  Result := '';
+  if IsVCRedistInstalled() then
+    Exit;
+
+  ExePath := ExpandConstant('{tmp}\{#VCRedistExe}');
+  if not FileExists(ExePath) then
+  begin
+    if ActiveLanguage = 'german' then
+      Result := 'Visual C++ Redistributable ({#VCRedistRegArch}) konnte nicht gefunden werden.'
+    else
+      Result := 'Visual C++ Redistributable ({#VCRedistRegArch}) installer file is missing.';
+    Exit;
+  end;
+
+  if WizardSilent() then
+    Params := '/install /quiet /norestart'
+  else
+    Params := '/install /passive /norestart';
+
+  if (not Exec(ExePath, Params, '', SW_SHOW, ewWaitUntilTerminated, ResultCode)) or
+     ((ResultCode <> 0) and (ResultCode <> 3010) and (ResultCode <> 1638)) then
+  begin
+    if ActiveLanguage = 'german' then
+      Result := 'Installation der Microsoft VC++ Redistributable ({#VCRedistRegArch}) fehlgeschlagen (Code ' + IntToStr(ResultCode) + ').'
+    else
+      Result := 'Failed to install Microsoft VC++ Redistributable ({#VCRedistRegArch}) (exit code ' + IntToStr(ResultCode) + ').';
+    Exit;
+  end;
+
+  if ResultCode = 3010 then
+    NeedsRestart := True;
 end;
