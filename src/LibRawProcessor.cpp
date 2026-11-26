@@ -317,6 +317,45 @@ bool TryDecodeEmbeddedJpegThumb(LibRaw& processor, DecodedImageBGR& outImage)
     return ok;
 }
 
+template <typename SampleT>
+bool CopyMemImageChannelsToBGR(const SampleT* src, SampleT* dst, uint32_t w, uint32_t h, uint32_t colors)
+{
+    if (colors == 1)
+    {
+        for (uint32_t y = 0; y < h; ++y)
+        {
+            const SampleT* srcRow = src + static_cast<size_t>(y) * w;
+            SampleT* dstRow = dst + static_cast<size_t>(y) * w * 3u;
+            for (uint32_t x = 0; x < w; ++x)
+            {
+                const SampleT v = srcRow[x];
+                dstRow[x * 3 + 0] = v;
+                dstRow[x * 3 + 1] = v;
+                dstRow[x * 3 + 2] = v;
+            }
+        }
+        return true;
+    }
+
+    if (colors >= 3)
+    {
+        for (uint32_t y = 0; y < h; ++y)
+        {
+            const SampleT* srcRow = src + static_cast<size_t>(y) * w * colors;
+            SampleT* dstRow = dst + static_cast<size_t>(y) * w * 3u;
+            for (uint32_t x = 0; x < w; ++x)
+            {
+                dstRow[x * 3 + 0] = srcRow[x * colors + 2];
+                dstRow[x * 3 + 1] = srcRow[x * colors + 1];
+                dstRow[x * 3 + 2] = srcRow[x * colors + 0];
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
 void ConfigureLibRawParams(LibRaw& processor, bool halfSize, const CodecTuning& tuning)
 {
     auto& p = processor.imgdata.params;
@@ -795,86 +834,18 @@ HRESULT LibRawProcessor::DecodeToImage(IStream* stream, CR3DecodeMode mode, Deco
             if (!img)
                 return MapLibRawError(rc != LIBRAW_SUCCESS ? rc : LIBRAW_UNSPECIFIED_ERROR);
 
-            if (bps == 8)
-            {
-                if (img->colors == 1)
-                {
-                    for (uint32_t y = 0; y < h; ++y)
-                    {
-                        const uint8_t* srcRow = img->data + static_cast<size_t>(y) * w;
-                        uint8_t* dstRow = outImage.pixels.data() + static_cast<size_t>(y) * stride;
-                        for (uint32_t x = 0; x < w; ++x)
-                        {
-                            const uint8_t v = srcRow[x];
-                            dstRow[x * 3 + 0] = v;
-                            dstRow[x * 3 + 1] = v;
-                            dstRow[x * 3 + 2] = v;
-                        }
-                    }
-                }
-                else if (img->colors >= 3)
-                {
-                    const uint32_t c = static_cast<uint32_t>(img->colors);
-                    for (uint32_t y = 0; y < h; ++y)
-                    {
-                        const uint8_t* srcRow = img->data + static_cast<size_t>(y) * w * c;
-                        uint8_t* dstRow = outImage.pixels.data() + static_cast<size_t>(y) * stride;
-                        for (uint32_t x = 0; x < w; ++x)
-                        {
-                            dstRow[x * 3 + 0] = srcRow[x * c + 2];
-                            dstRow[x * 3 + 1] = srcRow[x * c + 1];
-                            dstRow[x * 3 + 2] = srcRow[x * c + 0];
-                        }
-                    }
-                }
-                else
-                {
-                    LibRaw::dcraw_clear_mem(img);
-                    return WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT;
-                }
-            }
-            else
-            {
-                const auto* src16 = reinterpret_cast<const uint16_t*>(img->data);
-                auto* dst16 = reinterpret_cast<uint16_t*>(outImage.pixels.data());
-                if (img->colors == 1)
-                {
-                    for (uint32_t y = 0; y < h; ++y)
-                    {
-                        const uint16_t* srcRow = src16 + static_cast<size_t>(y) * w;
-                        uint16_t* dstRow = dst16 + static_cast<size_t>(y) * w * 3u;
-                        for (uint32_t x = 0; x < w; ++x)
-                        {
-                            const uint16_t v = srcRow[x];
-                            dstRow[x * 3 + 0] = v;
-                            dstRow[x * 3 + 1] = v;
-                            dstRow[x * 3 + 2] = v;
-                        }
-                    }
-                }
-                else if (img->colors >= 3)
-                {
-                    const uint32_t c = static_cast<uint32_t>(img->colors);
-                    for (uint32_t y = 0; y < h; ++y)
-                    {
-                        const uint16_t* srcRow = src16 + static_cast<size_t>(y) * w * c;
-                        uint16_t* dstRow = dst16 + static_cast<size_t>(y) * w * 3u;
-                        for (uint32_t x = 0; x < w; ++x)
-                        {
-                            dstRow[x * 3 + 0] = srcRow[x * c + 2];
-                            dstRow[x * 3 + 1] = srcRow[x * c + 1];
-                            dstRow[x * 3 + 2] = srcRow[x * c + 0];
-                        }
-                    }
-                }
-                else
-                {
-                    LibRaw::dcraw_clear_mem(img);
-                    return WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT;
-                }
-            }
+            const bool copied = (bps == 8)
+                ? CopyMemImageChannelsToBGR<uint8_t>(img->data, outImage.pixels.data(), w, h, static_cast<uint32_t>(img->colors))
+                : CopyMemImageChannelsToBGR<uint16_t>(
+                      reinterpret_cast<const uint16_t*>(img->data),
+                      reinterpret_cast<uint16_t*>(outImage.pixels.data()),
+                      w,
+                      h,
+                      static_cast<uint32_t>(img->colors));
 
             LibRaw::dcraw_clear_mem(img);
+            if (!copied)
+                return WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT;
         }
 
         processor.recycle();

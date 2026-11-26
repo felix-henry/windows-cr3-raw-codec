@@ -83,12 +83,16 @@ Write-Host ($(if ($installedVer) { $installedVer.ToString() } else { T "Not inst
 
 # Determine source (local vs GitHub)
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+$TargetDirNormalized = [System.IO.Path]::GetFullPath($TargetDir).TrimEnd('\')
 $localCandidate = $null
 if (-not [string]::IsNullOrWhiteSpace($SourceDir)) {
     $localCandidate = $SourceDir
 } elseif (-not $FromGitHub) {
     foreach ($dir in @($RepoRoot, (Join-Path $RepoRoot "build\bin"), (Join-Path $RepoRoot "build\bin\Release"))) {
         if ((Test-Path (Join-Path $dir "CR3WICCodec.dll")) -and (Test-Path (Join-Path $dir "libraw.dll"))) {
+            $dirNormalized = [System.IO.Path]::GetFullPath($dir).TrimEnd('\')
+            # Do not treat the active installation directory itself as an update source
+            if ($dirNormalized -ieq $TargetDirNormalized) { continue }
             $localCandidate = $dir
             break
         }

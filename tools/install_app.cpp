@@ -38,6 +38,31 @@ std::wstring ResolveSourceDir(const std::wstring& exeDir)
         return exeDir + L"\\bin";
     return {};
 }
+
+bool CopyFileLockSafe(const std::wstring& src, const std::wstring& dst, DWORD& outErr)
+{
+    outErr = ERROR_SUCCESS;
+    if (CopyFileW(src.c_str(), dst.c_str(), FALSE))
+        return true;
+
+    const DWORD err = GetLastError();
+    if (err == ERROR_SHARING_VIOLATION || err == ERROR_ACCESS_DENIED)
+    {
+        const std::wstring oldDst = dst + L".old." + std::to_wstring(GetTickCount64());
+        if (MoveFileExW(dst.c_str(), oldDst.c_str(), MOVEFILE_REPLACE_EXISTING))
+        {
+            MoveFileExW(oldDst.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
+            if (CopyFileW(src.c_str(), dst.c_str(), FALSE))
+                return true;
+        }
+        outErr = GetLastError();
+    }
+    else
+    {
+        outErr = err;
+    }
+    return false;
+}
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
@@ -103,40 +128,26 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     {
         const std::wstring src = srcDir + L"\\" + name;
         const std::wstring dst = targetDir + L"\\" + name;
-        if (!CopyFileW(src.c_str(), dst.c_str(), FALSE))
+        DWORD copyErr = ERROR_SUCCESS;
+        if (!CopyFileLockSafe(src, dst, copyErr))
         {
-            const DWORD err = GetLastError();
-            bool recovered = false;
-            if (err == ERROR_SHARING_VIOLATION || err == ERROR_ACCESS_DENIED)
+            std::wstring hint;
+            if (copyErr == ERROR_SHARING_VIOLATION || copyErr == ERROR_ACCESS_DENIED)
             {
-                const std::wstring oldDst = dst + L".old." + std::to_wstring(GetTickCount64());
-                if (MoveFileExW(dst.c_str(), oldDst.c_str(), MOVEFILE_REPLACE_EXISTING))
-                {
-                    MoveFileExW(oldDst.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
-                    recovered = (CopyFileW(src.c_str(), dst.c_str(), FALSE) != FALSE);
-                }
+                hint = cr3setup::L(
+                    L"\n\nHint: The file may currently be locked by Windows Explorer. "
+                    L"Please close Explorer windows (or sign out briefly) and try again.",
+                    L"\n\nHinweis: Die Datei ist eventuell noch vom Windows Explorer gesperrt. "
+                    L"Bitte Explorer-Fenster schliessen (oder kurz abmelden) und erneut versuchen.");
             }
-            if (!recovered)
-            {
-                const DWORD finalErr = GetLastError();
-                std::wstring hint;
-                if (finalErr == ERROR_SHARING_VIOLATION || finalErr == ERROR_ACCESS_DENIED)
-                {
-                    hint = cr3setup::L(
-                        L"\n\nHint: The file may currently be locked by Windows Explorer. "
-                        L"Please close Explorer windows (or sign out briefly) and try again.",
-                        L"\n\nHinweis: Die Datei ist eventuell noch vom Windows Explorer gesperrt. "
-                        L"Bitte Explorer-Fenster schliessen (oder kurz abmelden) und erneut versuchen.");
-                }
-                const std::wstring msg =
-                    std::wstring(cr3setup::L(L"Failed to copy ", L"Fehler beim Kopieren von ")) +
-                    name +
-                    cr3setup::L(L" to:\n", L" nach:\n") +
-                    dst + L"\n\n" + cr3setup::FormatWin32Error(finalErr) + hint;
-                MessageBoxW(nullptr, msg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONERROR);
-                CoUninitialize();
-                return 1;
-            }
+            const std::wstring msg =
+                std::wstring(cr3setup::L(L"Failed to copy ", L"Fehler beim Kopieren von ")) +
+                name +
+                cr3setup::L(L" to:\n", L" nach:\n") +
+                dst + L"\n\n" + cr3setup::FormatWin32Error(copyErr) + hint;
+            MessageBoxW(nullptr, msg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONERROR);
+            CoUninitialize();
+            return 1;
         }
     }
 
@@ -155,7 +166,21 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         const std::wstring src = (cr3setup::FileExists(srcDir + L"\\" + name)) ? (srcDir + L"\\" + name) : (exeDir + L"\\" + name);
         if (cr3setup::FileExists(src))
         {
-            CopyFileW(src.c_str(), (targetDir + L"\\" + name).c_str(), FALSE);
+            DWORD ignoredErr = 0;
+            CopyFileLockSafe(src, targetDir + L"\\" + name, ignoredErr);
+        }
+    }
+
+    const std::wstring targetScriptsDir = targetDir + L"\\scripts";
+    CreateDirectoryW(targetScriptsDir.c_str(), nullptr);
+    const wchar_t* scriptFiles[] = {L"install.ps1", L"uninstall.ps1", L"update.ps1"};
+    for (const wchar_t* scriptName : scriptFiles)
+    {
+        const std::wstring rel = std::wstring(L"\\scripts\\") + scriptName;
+        const std::wstring src = cr3setup::FileExists(srcDir + rel) ? (srcDir + rel) : (exeDir + rel);
+        if (cr3setup::FileExists(src))
+        {
+            CopyFileW(src.c_str(), (targetScriptsDir + L"\\" + scriptName).c_str(), FALSE);
         }
     }
 

@@ -3,6 +3,40 @@
 All notable changes to **Canon CR3 Native WIC Codec** are documented in this file.
 On tagged releases (`v*`), GitHub Actions automatically extracts the matching `## vX.Y.Z` section as the GitHub Release body.
 
+## v1.3.1
+
+Maintenance & packaging polish ensuring the PowerShell updater (`scripts\update.ps1`) is always bundled by the Setup installer and `Install.exe`, fixing self-update detection when invoked from the install directory, and cleaning up fallback pixel-copy code.
+
+### What's Changed in v1.3.1
+
+- **Bundle `scripts\` in Setup & `Install.exe` (`CR3WICCodec.iss` & `install_app.cpp`)**
+  - Inno Setup (`CR3WICCodec-Setup-x64-v1.3.1.exe`) and the portable `Install.exe` now install `scripts\update.ps1`, `scripts\install.ps1`, and `scripts\uninstall.ps1` into `C:\Program Files\CR3WICCodec\scripts\`.
+  - `Install.exe` now also uses lock-safe `MoveFileExW` replacement for optional DLLs like `vcomp140.dll`.
+- **Self-Directory Fix in `scripts/update.ps1`**
+  - Prevented `update.ps1` from mistaking the active `C:\Program Files\CR3WICCodec` installation folder for a local update source when run without `-FromGitHub`.
+- **Code & Documentation Cleanup**
+  - Consolidated the 8-bit/16-bit multi-channel fallback copy path in `LibRawProcessor.cpp` into a single `CopyMemImageChannelsToBGR<SampleT>` template helper.
+  - Updated `README.md` with the exact installed `scripts\update.ps1` command and a concise summary of `v1.3.x` capabilities.
+
+### Installation & Upgrading
+
+- **Upgrade from an earlier version** directly in an Administrator PowerShell:
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\CR3WICCodec\scripts\update.ps1" -FromGitHub
+  ```
+- **Fresh Install (Recommended)**: Download and run **`CR3WICCodec-Setup-x64-v1.3.1.exe`** below.
+- **Portable**: Download **`CR3WICCodec-x64-portable.zip`**, extract it to a permanent folder, and run `Install.exe` (or `scripts\install.ps1` as Administrator).
+
+### Downloads
+
+| File | Description |
+| :--- | :--- |
+| **`CR3WICCodec-Setup-x64-v1.3.1.exe`** | Windows Installer (DE/EN) with automatic elevation, Explorer thumbnail cache refresh, and Windows Uninstaller entry |
+| **`CR3WICCodec-x64-portable.zip`** | Portable archive containing `CR3WICCodec.dll`, `libraw.dll`, `vcomp140.dll`, `test_decoder.exe`, `Install.exe`, `Uninstall.exe`, `scripts\update.ps1`, and PowerShell helpers |
+| **`SHA256SUMS.txt`** | SHA-256 checksums for verifying the setup executable and portable ZIP |
+
+**Full Changelog:** [`v1.3.0...v1.3.1`](https://github.com/felix-henry/windows-cr3-raw-codec/compare/v1.3.0...v1.3.1)
+
 ## v1.3.0
 
 I/O, metadata, and WIC compliance release adding a **4× 64 KB LRU stream cache**, zero-reparse **embedded JPEG offset caching** for previews and fast thumbnails, **extended EXIF / GPS / Rating metadata**, and full **`IWICBitmapSourceTransform`** rotation/flip support.

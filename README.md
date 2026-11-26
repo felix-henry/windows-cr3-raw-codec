@@ -3,7 +3,10 @@
 [![Build and Release Windows x64](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml/badge.svg)](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml)
 
 Native **Windows Imaging Component (WIC)** decoder for Canon `.CR3` RAW files, powered by current **LibRaw** with **OpenMP**.
-Makes Windows Explorer (thumbnails, preview pane & EXIF details), Paint, and classic WIC viewers render **true 14-bit RAW colors** without the magenta/pink tint of outdated Microsoft codecs.
+Makes Windows Explorer (thumbnails, preview pane & EXIF/GPS details), Paint, and classic WIC viewers render **true 14-bit RAW colors** without the magenta/pink tint of outdated Microsoft codecs.
+
+- **True RAW Colors & Speed:** Full 14-bit demosaicing with OpenMP acceleration, fast previews (`GetPreview`), scaled decoding (`IWICBitmapSourceTransform`), and a 4× 64 KB LRU stream cache for network shares and SD cards.
+- **Explorer Metadata & Tuning:** Exposes camera/lens EXIF, GPS, and ratings in Windows Details; optional Registry tuning for 16-bit (`48bppBGR`), wide-gamut color spaces, or embedded JPEG thumbnails (see [Wiki](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)).
 
 ---
 
@@ -24,7 +27,7 @@ Makes Windows Explorer (thumbnails, preview pane & EXIF details), Paint, and cla
 
 1. **Setup Installer (`CR3WICCodec-Setup-x64-v*.exe`):** Run the setup wizard. Uninstall anytime via **Windows Settings → Apps**.
 2. **Portable ZIP (`CR3WICCodec-x64-portable.zip`):** Extract and double-click **`Install.exe`** (uses UAC elevation, no PowerShell needed). Double-click **`Uninstall.exe`** to remove.
-3. **Updating:** Re-run the latest `Setup.exe` / `Install.exe` over an existing install, or run `.\scripts\update.ps1` in an Administrator PowerShell to fetch and apply the latest GitHub release automatically.
+3. **Updating:** Re-run the latest `Setup.exe` / `Install.exe` over an existing install, or run `powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\CR3WICCodec\scripts\update.ps1" -FromGitHub` in an Administrator PowerShell (verifies `SHA256SUMS.txt` automatically).
 
 **Requirements:** Windows 10 (1809+) / Windows 11 (x64) and [VC++ 2015–2022 Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 
