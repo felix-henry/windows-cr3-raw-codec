@@ -1,7 +1,5 @@
 # Canon CR3 Native WIC Codec (Windows 10 / 11)
 
-[![Build and Release Windows (x64 & ARM64)](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml/badge.svg)](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml)
-
 View Canon `.CR3` RAW photos in Windows 10 and 11 with true 14-bit colors—fixing the pink tint and missing previews caused by outdated built-in Windows decoders.
 
 - **Works out of the box:** File Explorer thumbnails, preview pane (`Alt + P`), classic Windows photo viewers, and camera details (EXIF, lens, GPS, and star ratings).
@@ -59,6 +57,7 @@ Supports **all Canon `.CR3` cameras** supported by LibRaw, including:
 [![Website](https://img.shields.io/badge/Website-felixhenry.de-111827?style=for-the-badge&labelColor=1f2937&color=0284c7)](https://felixhenry.de)
 [![Latest Release](https://img.shields.io/github/v/release/felix-henry/windows-cr3-raw-codec?style=for-the-badge&label=Download&color=16a34a)](https://github.com/felix-henry/windows-cr3-raw-codec/releases/latest)
 [![Wiki](https://img.shields.io/badge/Docs-Wiki-6366f1?style=for-the-badge)](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)
+[![Build and Release Windows (x64 & ARM64)](https://img.shields.io/github/actions/workflow/status/felix-henry/windows-cr3-raw-codec/build-release.yml?branch=main&style=for-the-badge&label=Build)](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml)
 
 **Built for Canon photographers on Windows 10 / 11** · **[felixhenry.de](https://felixhenry.de)**
 
