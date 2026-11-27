@@ -1,10 +1,10 @@
 # Canon CR3 Native WIC Codec (Windows 10 / 11)
 
-View Canon `.CR3` RAW photos in Windows 10 and 11 with true 14-bit colors—fixing the pink tint and missing previews caused by outdated built-in Windows decoders.
+View Canon `.CR3` RAW photos natively in Windows 10 and 11 with accurate 14-bit colors—fixing the pink tint and missing previews caused by outdated built-in Windows decoders.
 
-- **Works out of the box:** File Explorer thumbnails, preview pane (`Alt + P`), classic Windows photo viewers, and camera details (EXIF, lens, GPS, and star ratings).
-- **Fast & accurate:** Powered by **LibRaw** with multi-core processing and smart caching for folders, SD cards, and network drives.
-- **Flexible:** Optional settings for 16-bit output, wide-gamut color spaces, or ultra-fast embedded JPEG thumbnails (see the [Wiki](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)).
+- **Works everywhere in Windows:** File Explorer thumbnails, preview pane (`Alt + P`), classic photo viewers, and camera metadata (EXIF, lens, GPS, and star ratings).
+- **Fast & reliable:** Powered by **LibRaw** with multi-core decoding and smart caching for local drives, SD cards, and NAS folders.
+- **Customizable:** Optional settings for 16-bit output, wide-gamut color spaces, or instant embedded JPEG thumbnails (see the [Wiki](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)).
 
 ---
 
@@ -21,20 +21,21 @@ View Canon `.CR3` RAW photos in Windows 10 and 11 with true 14-bit colors—fixi
 
 ## Download & Install
 
-**[Download Latest Release](https://github.com/felix-henry/windows-cr3-raw-codec/releases/latest)** *(Windows 10 / 11)*
+[![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-16a34a?style=for-the-badge)](https://github.com/felix-henry/windows-cr3-raw-codec/releases/latest)
 
-**Which file should I download?**
-- **Most Windows PCs & laptops (Intel / AMD):** **`CR3WICCodec-Setup-x64-v*.exe`** *(Recommended)*
-- **Snapdragon / ARM64 Windows 11 laptops:** **`CR3WICCodec-Setup-arm64-v*.exe`**
+### 1. Pick the right file
+- **Standard Windows PCs (Intel / AMD):** `CR3WICCodec-Setup-x64-v*.exe` *(Recommended)*
+- **Snapdragon / ARM64 Windows 11 PCs:** `CR3WICCodec-Setup-arm64-v*.exe`
 
-### Ways to Install
-1. **Setup Installer (`.exe` — Recommended):** Run the installer and pick **Install for me only** (no admin rights needed) or **Install for all users** (admin). Missing Visual C++ runtime files are downloaded automatically. Uninstall anytime via **Windows Settings → Apps**.
-2. **Portable ZIP (`.zip`):** Unzip all files into a folder and double-click **`Install.exe`** (automatically installs for your user or all users if run as admin). Double-click **`Uninstall.exe`** or use **Windows Settings → Apps** to remove.
-3. **Updating:** Simply run the newest `.exe` installer over your existing installation—or run `scripts\update.ps1 -FromGitHub` in an Administrator PowerShell for system-wide installs.
+### 2. Install or update
+- **Setup Installer (`.exe` — Recommended):** Double-click to install—works **for your user only** *(no admin rights needed)* or **for all users**. Uninstall anytime via **Windows Settings → Apps**.
+- **Portable ZIP (`.zip`):** Extract all files into a folder first, then double-click **`Install.exe`** (remove via **`Uninstall.exe`**).
+- **Updating:** Simply run the newest `.exe` installer over your existing installation. *(A PowerShell updater `scripts\update.ps1` is also included.)*
 
-> **Old pink thumbnails still showing?** Open **Disk Cleanup (`cleanmgr.exe`)** on drive `C:`, select only **Thumbnails**, and clear the cache.
+> [!TIP]
+> **Old pink thumbnails still showing?** Open **Disk Cleanup (`cleanmgr.exe`)** on `C:`, select only **Thumbnails**, and clear the cache.
 
-**Requirements:** Windows 10 (1809+) or Windows 11. If installing offline without Visual C++ 2015–2022 installed, download it first for [x64](https://aka.ms/vs/17/release/vc_redist.x64.exe) or [ARM64](https://aka.ms/vs/17/release/vc_redist.arm64.exe).
+**Requirements:** Windows 10 (1809+) or Windows 11. Online installs download the Microsoft Visual C++ Runtime automatically; for offline PCs, install it first ([x64](https://aka.ms/vs/17/release/vc_redist.x64.exe) · [ARM64](https://aka.ms/vs/17/release/vc_redist.arm64.exe)).
 
 ---
 
@@ -46,20 +47,22 @@ Supports **all Canon `.CR3` cameras** supported by LibRaw, including:
 
 ---
 
-## More Information
+## Docs & Release History
 
-- **[Wiki — Troubleshooting, Registry Settings & Technical Details](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)**
+- **[Wiki](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)** — Troubleshooting, optional registry settings, and technical details
+- **[Release Notes](RELEASES.md)** — Short summaries of each version *(or full technical notes in [CHANGELOG.md](CHANGELOG.md))*
 
 ---
 
 <div align="center">
 
 [![Website](https://img.shields.io/badge/Website-felixhenry.de-111827?style=for-the-badge&labelColor=1f2937&color=0284c7)](https://felixhenry.de)
-[![Latest Release](https://img.shields.io/github/v/release/felix-henry/windows-cr3-raw-codec?style=for-the-badge&label=Download&color=16a34a)](https://github.com/felix-henry/windows-cr3-raw-codec/releases/latest)
+[![Latest Release](https://img.shields.io/badge/Download-Latest%20Release-16a34a?style=for-the-badge)](https://github.com/felix-henry/windows-cr3-raw-codec/releases/latest)
 [![Wiki](https://img.shields.io/badge/Docs-Wiki-6366f1?style=for-the-badge)](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)
-[![Build and Release Windows (x64 & ARM64)](https://img.shields.io/github/actions/workflow/status/felix-henry/windows-cr3-raw-codec/build-release.yml?branch=main&style=for-the-badge&label=Build)](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml)
 
 **Built for Canon photographers on Windows 10 / 11** · **[felixhenry.de](https://felixhenry.de)**
+
+[![Build and Release Windows (x64 & ARM64)](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml/badge.svg)](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml)
 
 <sub>[MIT License](LICENSE) · Powered by [LibRaw](https://www.libraw.org/) (LGPL 2.1 / CDDL 1.0) · [Third-Party Notices](THIRD_PARTY_NOTICES.md)</sub>  
 <sub>Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org)</sub>
