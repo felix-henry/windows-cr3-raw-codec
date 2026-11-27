@@ -111,30 +111,11 @@ First release of the native Canon `.CR3` RAW decoder for Windows 10 and 11.
 
 ## Release Downloads Template
 
-### Which Download Should I Pick?
+### Downloads & Install ({{TAG}})
 
-- **Normal Windows PCs & laptops (Intel / AMD):** **`CR3WICCodec-Setup-x64-{{TAG}}.exe`** *(Recommended for most users)*
-- **Snapdragon / ARM64 Windows 11 laptops:** **`CR3WICCodec-Setup-arm64-{{TAG}}.exe`**
+- **`CR3WICCodec-Setup-x64-{{TAG}}.exe`** *(Recommended)* — **Intel / AMD PCs:** Double-click to install (works with or without admin rights).
+- **`CR3WICCodec-Setup-arm64-{{TAG}}.exe`** — **Snapdragon / ARM64 PCs:** Double-click to install (works with or without admin rights).
+- **`CR3WICCodec-x64-portable.zip`** — **Intel / AMD PCs (Portable):** Unzip all files first, then double-click `Install.exe`.
+- **`CR3WICCodec-arm64-portable.zip`** — **Snapdragon / ARM64 PCs (Portable):** Unzip all files first, then double-click `Install.exe`.
 
-### Downloads Overview ({{TAG}})
-
-| File | Best for | What it includes |
-| :--- | :--- | :--- |
-| **`CR3WICCodec-Setup-x64-{{TAG}}.exe`** | **Most Windows PCs (Intel / AMD)** | Guided single-file installer (`v{{VERSION}}`). Works with or without admin rights, auto-detects language (DE/EN), installs VC++ runtimes if missing, and adds an entry in **Windows Settings → Apps**. |
-| **`CR3WICCodec-Setup-arm64-{{TAG}}.exe`** | **Snapdragon / ARM64 PCs** | Same guided installer built natively for Windows 11 ARM64. |
-| **`CR3WICCodec-x64-portable.zip`** | **Portable / manual setup (Intel / AMD)** | Standalone ZIP with the codec files, `Install.exe`, `Uninstall.exe`, and PowerShell scripts. |
-| **`CR3WICCodec-arm64-portable.zip`** | **Portable / manual setup (ARM64)** | Same portable ZIP built natively for Windows 11 ARM64. |
-| **`SHA256SUMS.txt`** | **Optional verification** | Checksums to verify your downloaded files. |
-
-### How to Install (`.exe` vs. `.zip`)
-
-- **Using the Setup Installer (`.exe` — Recommended):**
-  1. Download the `.exe` for your PC (`x64` or `arm64`) and double-click it *(if Windows SmartScreen shows up, click **More info → Run anyway**)*.
-  2. Choose **Install for me only** (no admin rights needed) or **Install for all users** (admin).
-  3. Uninstall anytime in **Windows Settings → Apps**.
-- **Using the Portable ZIP (`.zip`):**
-  1. Unzip the entire archive into a folder first (don't run files straight from the ZIP preview).
-  2. Double-click **`Install.exe`** (or run `scripts\install.ps1` in an Administrator PowerShell).
-  3. Uninstall anytime via **`Uninstall.exe`** or **Windows Settings → Apps**.
-
-> **Tip:** If old pink thumbnails still show up after installing, run **Disk Cleanup (`cleanmgr.exe`)** on `C:`, select only **Thumbnails**, and clear the cache.
+> **Tip:** Uninstall anytime via **Windows Settings → Apps**. If old pink thumbnails still show up after installing, clear **Thumbnails** in **Disk Cleanup (`cleanmgr.exe`)**.
