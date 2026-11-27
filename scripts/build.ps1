@@ -132,18 +132,26 @@ if ($Package) {
     Compress-Archive -Path "$stageDir\*" -DestinationPath $zipPath
     Write-Host "   Portable ZIP erstellt: $zipPath" -ForegroundColor Green
 
-    $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
-    if (-not $iscc) {
-        $isccCandidate = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-        if (Test-Path $isccCandidate) { $iscc = $isccCandidate }
+    $appVersion = "0.0.0"
+    $cmakeTxt = Get-Content -Path (Join-Path $RepoRoot "CMakeLists.txt") -Raw
+    if ($cmakeTxt -match "project\s*\(\s*CR3WICCodec\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)") {
+        $appVersion = $Matches[1]
     }
-    if ($iscc) {
-        & $iscc "/DTargetArch=$Arch" "/DSourceDir=$stageDir" "/DOutputDir=$distDir" (Join-Path $RepoRoot "installer\CR3WICCodec.iss")
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        Write-Host "   Inno Setup Installer ($Arch) erstellt unter: $distDir" -ForegroundColor Green
-    } else {
-        Write-Host "   Hinweis: Inno Setup 6 (ISCC.exe) nicht gefunden - nur Portable-ZIP erstellt." -ForegroundColor Yellow
+
+    $payloadPath = (Join-Path $buildDir "payload-$Arch.bin") -replace '\\', '/'
+    & (Join-Path $RepoRoot "scripts\pack_payload.ps1") -SourceDir $stageDir -OutFile $payloadPath
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    $setupBuildCmd = "$vcInitCmd && cmake -S `"$RepoRoot`" -B `"$buildDir`" -G Ninja -DCMAKE_BUILD_TYPE=Release $sysProcArg -DLIBRAW_ROOT=`"$LibRawPath`" -DCR3_PAYLOAD_FILE=`"$payloadPath`" && cmake --build `"$buildDir`" --target Setup"
+    cmd /c $setupBuildCmd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Setup.exe Build ($Arch) fehlgeschlagen."
+        exit 1
     }
+
+    $setupOutName = "CR3WICCodec-Setup-$Arch-v$appVersion.exe"
+    Copy-Item -Path (Join-Path $binDir "Setup.exe") -Destination (Join-Path $distDir $setupOutName) -Force
+    Write-Host "   Standalone Setup ($Arch) erstellt: $(Join-Path $distDir $setupOutName)" -ForegroundColor Green
 
     $sumsPath = Join-Path $distDir "SHA256SUMS.txt"
     $hashLines = Get-ChildItem -Path $distDir -File | Where-Object { $_.Extension -in @(".zip", ".exe") } | Sort-Object Name | ForEach-Object {

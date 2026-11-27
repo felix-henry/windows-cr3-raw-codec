@@ -8,6 +8,7 @@
 #include <sddl.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include "../src/Guid.h"
@@ -235,6 +236,86 @@ inline bool RegKeyExists(HKEY root, const std::wstring& subKey)
     {
         RegCloseKey(key);
         return true;
+    }
+    return false;
+}
+
+inline constexpr wchar_t kUninstallSubKey[] = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CR3WICCodec";
+inline constexpr wchar_t kLegacyInnoUninstallSubKey[] = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{D7E4A3B1-5C8F-4A9E-9B2D-6F1A8E3C4D50}_is1";
+
+inline void UnregisterUninstallEntry(HKEY regRoot)
+{
+    RegDeleteTreeW(regRoot, kUninstallSubKey);
+    RegDeleteTreeW(regRoot, kLegacyInnoUninstallSubKey);
+}
+
+inline bool ReplaceLockedFileStep(const std::wstring& dst, DWORD err, DWORD& outErr)
+{
+    if (err != ERROR_SHARING_VIOLATION && err != ERROR_ACCESS_DENIED)
+    {
+        outErr = err;
+        return false;
+    }
+    const std::wstring oldDst = dst + L".old." + std::to_wstring(GetTickCount64());
+    if (MoveFileExW(dst.c_str(), oldDst.c_str(), MOVEFILE_REPLACE_EXISTING))
+    {
+        MoveFileExW(oldDst.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
+        return true;
+    }
+    outErr = GetLastError();
+    return false;
+}
+
+inline bool CopyFileLockSafe(const std::wstring& src, const std::wstring& dst, DWORD& outErr)
+{
+    outErr = ERROR_SUCCESS;
+    if (CopyFileW(src.c_str(), dst.c_str(), FALSE))
+        return true;
+
+    const DWORD err = GetLastError();
+    if (ReplaceLockedFileStep(dst, err, outErr))
+    {
+        if (CopyFileW(src.c_str(), dst.c_str(), FALSE))
+            return true;
+        outErr = GetLastError();
+    }
+    return false;
+}
+
+inline bool WriteBytesLockSafe(const void* data, DWORD size, const std::wstring& dst, DWORD& outErr)
+{
+    auto writeOnce = [&]() -> bool {
+        HANDLE h = CreateFileW(dst.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h == INVALID_HANDLE_VALUE)
+            return false;
+        DWORD total = 0;
+        const BYTE* p = static_cast<const BYTE*>(data);
+        while (total < size)
+        {
+            DWORD written = 0;
+            if (!WriteFile(h, p + total, size - total, &written, nullptr))
+            {
+                const DWORD err = GetLastError();
+                CloseHandle(h);
+                SetLastError(err);
+                return false;
+            }
+            total += written;
+        }
+        CloseHandle(h);
+        return true;
+    };
+
+    outErr = ERROR_SUCCESS;
+    if (writeOnce())
+        return true;
+
+    const DWORD err = GetLastError();
+    if (ReplaceLockedFileStep(dst, err, outErr))
+    {
+        if (writeOnce())
+            return true;
+        outErr = GetLastError();
     }
     return false;
 }

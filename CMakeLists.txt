@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CR3WICCodec VERSION 1.5.0 LANGUAGES CXX RC)
+project(CR3WICCodec VERSION 1.5.1 LANGUAGES CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "CR3WICCodec is a Windows Imaging Component (WIC) COM DLL and only supports Windows.")
@@ -230,3 +230,58 @@ foreach(_app IN ITEMS Install Uninstall)
         target_link_libraries(${_app} PRIVATE urlmon)
     endif()
 endforeach()
+
+# ----------------------------------------------------------------------------
+# Setup.exe - Self-contained native single-EXE installer (no %TEMP% .tmp stub)
+# ----------------------------------------------------------------------------
+set(CR3_PAYLOAD_FILE "" CACHE FILEPATH "Optional path to compressed payload.bin for building Setup.exe")
+if(CR3_PAYLOAD_FILE AND EXISTS "${CR3_PAYLOAD_FILE}")
+    file(TO_CMAKE_PATH "${CR3_PAYLOAD_FILE}" _CR3_PAYLOAD_CMAKE)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/SetupPayload.rc.in"
+        "${CMAKE_BINARY_DIR}/SetupPayload.rc"
+        @ONLY
+    )
+    set_source_files_properties("${CMAKE_BINARY_DIR}/SetupPayload.rc" PROPERTIES
+        OBJECT_DEPENDS "${_CR3_PAYLOAD_CMAKE}"
+    )
+    add_executable(Setup WIN32
+        tools/setup_app.cpp
+        tools/Tools.rc
+        "${CMAKE_BINARY_DIR}/SetupPayload.rc"
+        tools/InstallCore.h
+        tools/SetupCommon.h
+        src/Guid.h
+        src/Version.h
+    )
+    set_target_properties(Setup PROPERTIES
+        OUTPUT_NAME "Setup"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    )
+    target_compile_definitions(Setup PRIVATE
+        UNICODE
+        _UNICODE
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        CR3_VER_MAJOR=${PROJECT_VERSION_MAJOR}
+        CR3_VER_MINOR=${PROJECT_VERSION_MINOR}
+        CR3_VER_PATCH=${PROJECT_VERSION_PATCH}
+        CR3_TOOL_DESC="Canon CR3 WIC Codec Setup"
+        CR3_TOOL_INTERNAL="Setup"
+        CR3_TOOL_FILENAME="CR3WICCodec-Setup.exe"
+    )
+    target_compile_options(Setup PRIVATE
+        /W4
+        /EHsc
+        /utf-8
+    )
+    target_link_libraries(Setup PRIVATE
+        ole32
+        shell32
+        advapi32
+        urlmon
+        comctl32
+        cabinet
+    )
+endif()

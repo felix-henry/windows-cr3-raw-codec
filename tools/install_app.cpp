@@ -1,70 +1,7 @@
-#include "SetupCommon.h"
-#include <shellapi.h>
-#include <urlmon.h>
+#include "InstallCore.h"
 
 namespace
 {
-#if defined(_M_ARM64)
-inline constexpr wchar_t kVcRegSubKey[] = L"SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\ARM64";
-inline constexpr wchar_t kVcDownloadUrl[] = L"https://aka.ms/vs/17/release/vc_redist.arm64.exe";
-inline constexpr wchar_t kVcTempFileName[] = L"vc_redist.arm64.exe";
-inline constexpr wchar_t kArchLabel[] = L"ARM64";
-#else
-inline constexpr wchar_t kVcRegSubKey[] = L"SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64";
-inline constexpr wchar_t kVcDownloadUrl[] = L"https://aka.ms/vs/17/release/vc_redist.x64.exe";
-inline constexpr wchar_t kVcTempFileName[] = L"vc_redist.x64.exe";
-inline constexpr wchar_t kArchLabel[] = L"x64";
-#endif
-
-bool IsVCRedistInstalled()
-{
-    DWORD installed = 0;
-    DWORD size = sizeof(installed);
-    if (RegGetValueW(
-            HKEY_LOCAL_MACHINE,
-            kVcRegSubKey,
-            L"Installed",
-            RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY,
-            nullptr,
-            &installed,
-            &size) == ERROR_SUCCESS &&
-        installed == 1)
-    {
-        return true;
-    }
-
-    wchar_t sysDir[MAX_PATH]{};
-    if (GetSystemDirectoryW(sysDir, MAX_PATH) > 0)
-    {
-        const std::wstring vcDll = std::wstring(sysDir) + L"\\vcruntime140_1.dll";
-        if (cr3setup::FileExists(vcDll))
-            return true;
-    }
-    return false;
-}
-
-bool DownloadAndInstallVCRedist(bool runAsAdmin)
-{
-    wchar_t tempDir[MAX_PATH]{};
-    const DWORD tempLen = GetTempPathW(MAX_PATH, tempDir);
-    if (tempLen == 0 || tempLen >= MAX_PATH)
-        return false;
-
-    const std::wstring installerPath = std::wstring(tempDir) + kVcTempFileName;
-    DeleteFileW(installerPath.c_str());
-
-    const HRESULT dlHr = URLDownloadToFileW(nullptr, kVcDownloadUrl, installerPath.c_str(), 0, nullptr);
-    if (FAILED(dlHr) || !cr3setup::FileExists(installerPath))
-        return false;
-
-    DWORD exitCode = 1;
-    const bool launched = cr3setup::RunShellProcessWait(installerPath, L"/install /passive /norestart", runAsAdmin, exitCode);
-    DeleteFileW(installerPath.c_str());
-
-    // 0 = success, 3010 = reboot required (runtime files usable immediately), 1638 = newer version already present
-    return launched && (exitCode == 0 || exitCode == 3010 || exitCode == 1638) && IsVCRedistInstalled();
-}
-
 std::wstring ResolveSourceDir(const std::wstring& exeDir)
 {
     if (cr3setup::FileExists(exeDir + L"\\CR3WICCodec.dll"))
@@ -73,36 +10,17 @@ std::wstring ResolveSourceDir(const std::wstring& exeDir)
         return exeDir + L"\\bin";
     return {};
 }
-
-bool CopyFileLockSafe(const std::wstring& src, const std::wstring& dst, DWORD& outErr)
-{
-    outErr = ERROR_SUCCESS;
-    if (CopyFileW(src.c_str(), dst.c_str(), FALSE))
-        return true;
-
-    const DWORD err = GetLastError();
-    if (err == ERROR_SHARING_VIOLATION || err == ERROR_ACCESS_DENIED)
-    {
-        const std::wstring oldDst = dst + L".old." + std::to_wstring(GetTickCount64());
-        if (MoveFileExW(dst.c_str(), oldDst.c_str(), MOVEFILE_REPLACE_EXISTING))
-        {
-            MoveFileExW(oldDst.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
-            if (CopyFileW(src.c_str(), dst.c_str(), FALSE))
-                return true;
-        }
-        outErr = GetLastError();
-    }
-    else
-    {
-        outErr = err;
-    }
-    return false;
-}
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+    if (!cr3setup::CheckHostArchitecture(false))
+    {
+        CoUninitialize();
+        return 1;
+    }
 
     const std::wstring exeDir = cr3setup::GetExecutableDir();
     const std::wstring srcDir = ResolveSourceDir(exeDir);
@@ -114,7 +32,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 L"CR3WICCodec.dll or libraw.dll was not found in the package folder.\n"
                 L"Please extract the complete release ZIP before running Install.exe.",
                 L"CR3WICCodec.dll oder libraw.dll wurde im Paketordner nicht gefunden.\n"
-                L"Bitte entpacken Sie zuerst das vollstaendige Release-ZIP vor dem Start von Install.exe."),
+                L"Bitte entpacken Sie zuerst das vollständige Release-ZIP vor dem Start von Install.exe."),
             cr3setup::kAppTitle,
             MB_OK | MB_ICONERROR);
         CoUninitialize();
@@ -122,51 +40,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     }
 
     const bool isAdmin = cr3setup::IsProcessElevated();
-
-    if (!IsVCRedistInstalled())
+    if (!cr3setup::EnsureVCRedistReady(!isAdmin, false))
     {
-        const std::wstring promptMsg =
-            std::wstring(cr3setup::L(
-                L"Microsoft Visual C++ 2015-2022 Redistributable (",
-                L"Microsoft Visual C++ 2015-2022 Redistributable (")) +
-            kArchLabel +
-            cr3setup::L(
-                L") is not installed.\nLibRaw requires this runtime library.\n\n"
-                L"Download and install it automatically from Microsoft now?",
-                L") ist nicht installiert.\nLibRaw benoetigt diese Laufzeitbibliothek.\n\n"
-                L"Jetzt automatisch von Microsoft herunterladen und installieren?");
-
-        const int choice = MessageBoxW(
-            nullptr,
-            promptMsg.c_str(),
-            cr3setup::kAppTitle,
-            MB_YESNO | MB_ICONWARNING);
-        if (choice == IDYES)
-        {
-            if (!DownloadAndInstallVCRedist(!isAdmin))
-            {
-                const int openBrowser = MessageBoxW(
-                    nullptr,
-                    cr3setup::L(
-                        L"Automatic download or installation failed (e.g. offline).\n\n"
-                        L"Open the official Microsoft download page in your browser instead?",
-                        L"Automatischer Download oder Installation ist fehlgeschlagen (z. B. offline).\n\n"
-                        L"Stattdessen die offizielle Microsoft-Downloadseite im Browser oeffnen?"),
-                    cr3setup::kAppTitle,
-                    MB_YESNO | MB_ICONERROR);
-                if (openBrowser == IDYES)
-                {
-                    ShellExecuteW(nullptr, L"open", kVcDownloadUrl, nullptr, nullptr, SW_SHOWNORMAL);
-                }
-                CoUninitialize();
-                return 1;
-            }
-        }
-        else
-        {
-            CoUninitialize();
-            return 1;
-        }
+        CoUninitialize();
+        return 1;
     }
 
     const std::wstring targetDir = isAdmin ? cr3setup::GetProgramFilesInstallDir() : cr3setup::GetPerUserInstallDir();
@@ -182,13 +59,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         return 1;
     }
 
+    uint64_t totalBytes = 0;
     const wchar_t* requiredFiles[] = {L"CR3WICCodec.dll", L"libraw.dll"};
     for (const wchar_t* name : requiredFiles)
     {
         const std::wstring src = srcDir + L"\\" + name;
         const std::wstring dst = targetDir + L"\\" + name;
         DWORD copyErr = ERROR_SUCCESS;
-        if (!CopyFileLockSafe(src, dst, copyErr))
+        if (!cr3setup::CopyFileLockSafe(src, dst, copyErr))
         {
             std::wstring hint;
             if (copyErr == ERROR_SHARING_VIOLATION || copyErr == ERROR_ACCESS_DENIED)
@@ -197,7 +75,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                     L"\n\nHint: The file may currently be locked by Windows Explorer. "
                     L"Please close Explorer windows (or sign out briefly) and try again.",
                     L"\n\nHinweis: Die Datei ist eventuell noch vom Windows Explorer gesperrt. "
-                    L"Bitte Explorer-Fenster schliessen (oder kurz abmelden) und erneut versuchen.");
+                    L"Bitte Explorer-Fenster schließen (oder kurz abmelden) und erneut versuchen.");
             }
             const std::wstring msg =
                 std::wstring(cr3setup::L(L"Failed to copy ", L"Fehler beim Kopieren von ")) +
@@ -208,6 +86,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             CoUninitialize();
             return 1;
         }
+        WIN32_FILE_ATTRIBUTE_DATA fad{};
+        if (GetFileAttributesExW(dst.c_str(), GetFileExInfoStandard, &fad))
+            totalBytes += (static_cast<uint64_t>(fad.nFileSizeHigh) << 32) | fad.nFileSizeLow;
     }
 
     const wchar_t* optionalFiles[] = {
@@ -222,11 +103,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         L"COPYRIGHT.LibRaw.txt"};
     for (const wchar_t* name : optionalFiles)
     {
-        const std::wstring src = (cr3setup::FileExists(srcDir + L"\\" + name)) ? (srcDir + L"\\" + name) : (exeDir + L"\\" + name);
+        const std::wstring src = cr3setup::FileExists(srcDir + L"\\" + name) ? (srcDir + L"\\" + name) : (exeDir + L"\\" + name);
         if (cr3setup::FileExists(src))
         {
+            const std::wstring dst = targetDir + L"\\" + name;
             DWORD ignoredErr = 0;
-            CopyFileLockSafe(src, targetDir + L"\\" + name, ignoredErr);
+            if (cr3setup::CopyFileLockSafe(src, dst, ignoredErr))
+            {
+                WIN32_FILE_ATTRIBUTE_DATA fad{};
+                if (GetFileAttributesExW(dst.c_str(), GetFileExInfoStandard, &fad))
+                    totalBytes += (static_cast<uint64_t>(fad.nFileSizeHigh) << 32) | fad.nFileSizeLow;
+            }
         }
     }
 
@@ -243,64 +130,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         }
     }
 
-    if (isAdmin)
-    {
-        cr3setup::GrantAppContainerReadAccess(targetDir);
-    }
-
-    wchar_t sysDir[MAX_PATH]{};
-    GetSystemDirectoryW(sysDir, MAX_PATH);
-    const std::wstring targetDll = targetDir + L"\\CR3WICCodec.dll";
-    const std::wstring regCmd = isAdmin
-        ? (L"\"" + std::wstring(sysDir) + L"\\regsvr32.exe\" /s \"" + targetDll + L"\"")
-        : (L"\"" + std::wstring(sysDir) + L"\\regsvr32.exe\" /s /n /i:user \"" + targetDll + L"\"");
-
-    DWORD regExit = 1;
-    if (!cr3setup::RunProcessSilent(regCmd, regExit) || regExit != 0)
-    {
-        const std::wstring msg =
-            std::wstring(cr3setup::L(
-                L"COM/WIC registration (regsvr32) failed (code ",
-                L"COM/WIC-Registrierung (regsvr32) ist fehlgeschlagen (Code ")) +
-            std::to_wstring(regExit) + L").";
-        MessageBoxW(nullptr, msg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONERROR);
-        CoUninitialize();
-        return 1;
-    }
-
-    const HKEY regRoot = isAdmin ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
-    const std::wstring clsidBase = std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + kClsidCR3WICDecoderStr;
-    const std::wstring instanceKey = std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + kWicBitmapDecodersCategoryStr + L"\\Instance\\" + kClsidCR3WICDecoderStr;
-
-    if (!cr3setup::RegKeyExists(regRoot, clsidBase + L"\\Patterns\\0") ||
-        !cr3setup::RegKeyExists(regRoot, instanceKey))
-    {
-        MessageBoxW(
-            nullptr,
-            cr3setup::L(
-                L"Could not verify the WIC registry entries.",
-                L"Die WIC-Registry-Eintraege konnten nicht verifiziert werden."),
-            cr3setup::kAppTitle,
-            MB_OK | MB_ICONERROR);
-        CoUninitialize();
-        return 1;
-    }
-
-    const std::wstring successMsg =
-        std::wstring(cr3setup::L(
-            L"Canon CR3 WIC RAW Codec has been installed successfully!\n\nInstall path:\n",
-            L"Canon CR3 WIC RAW Codec wurde erfolgreich installiert!\n\nInstallationspfad:\n")) +
-        targetDir +
-        cr3setup::L(
-            L"\n\n.CR3 files in Windows Explorer will now render via LibRaw (14-bit RAW).\n\n"
-            L"Tip: If previously cached thumbnails still appear, clear them via "
-            L"Windows Disk Cleanup (cleanmgr.exe -> Thumbnails).",
-            L"\n\n.CR3-Dateien werden im Windows Explorer nun ueber LibRaw (14-Bit RAW) gerendert.\n\n"
-            L"Tipp: Falls alte gecachte Thumbnails noch sichtbar sind, koennen Sie diese ueber "
-            L"die Windows-Datentraegerbereinigung (cleanmgr.exe -> Miniaturansichten) leeren.");
-
-    MessageBoxW(nullptr, successMsg.c_str(), cr3setup::kAppTitle, MB_OK | MB_ICONINFORMATION);
-
+    const bool done = cr3setup::FinalizeCodecInstall(targetDir, isAdmin, false, totalBytes);
     CoUninitialize();
-    return 0;
+    return done ? 0 : 1;
 }

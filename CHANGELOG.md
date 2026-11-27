@@ -1,7 +1,24 @@
 # Changelog
 
 All notable changes to **Canon CR3 Native WIC Codec** are documented in this file.
-On tagged releases (`v*`), GitHub Actions automatically extracts the matching `## vX.Y.Z` section as the GitHub Release body.
+On tagged releases (`v*`), GitHub Actions automatically extracts the matching `## vX.Y.Z` section together with the dynamic `## Release Downloads Template` below as the GitHub Release body.
+
+## v1.5.1
+
+Reliability & localization release replacing the two-stage Inno Setup wrapper with a **self-contained native single-EXE installer** (eliminating `%TEMP%\*.tmp` `ShellExecuteEx code 5` antivirus/Defender blocks on Windows 11), fixing German umlauts across all native dialogs, and introducing a single dynamic Release Downloads template in `CHANGELOG.md`.
+
+### What's New in v1.5.1
+
+- **Native Single-EXE `CR3WICCodec-Setup-*.exe` (`tools/setup_app.cpp`)**
+  - Replaced Inno Setup (`ISCC.exe`) with a self-contained native C++ Win32 installer that decompresses its embedded Windows-LZMS payload (`scripts/pack_payload.ps1` + `Cabinet.dll`) directly in memory—no temporary `.tmp` executable is unpacked or launched in `%TEMP%`.
+  - Features a native Windows `TaskDialog` install-mode selector (*Install for me only / no admin* vs. *Install for all users / Admin* with UAC shield icon), host architecture verification (`x64` vs. `ARM64`), lock-safe in-place DLL updates, automatic Microsoft VC++ Redistributable download/install, and full **Windows Settings → Apps** uninstall registration (migrating legacy Inno Setup uninstall keys cleanly).
+- **German Umlaut Localization & Shared Installer Core**
+  - Fixed all German UI dialogs in `Setup.exe`, `Install.exe`, and `Uninstall.exe` to use native UTF-8/UTF-16 umlauts (`ä, ö, ü, ß`) instead of ASCII transcriptions (`ae/oe/ue/ss`).
+  - Consolidated VC++ check/install, lock-safe file replacement, registry/Apps registration, and architecture guards into shared headers (`tools/InstallCore.h`, `tools/SetupCommon.h`).
+- **Dynamic GitHub Release Template (`.github/workflows/build-release.yml` & `CHANGELOG.md`)**
+  - Moved the Downloads overview and per-method installation guide into one reusable `## Release Downloads Template` section in `CHANGELOG.md` using `{{TAG}}` / `{{VERSION}}` placeholders substituted automatically during GitHub Releases.
+
+**Full Changelog:** [`v1.5.0...v1.5.1`](https://github.com/felix-henry/windows-cr3-raw-codec/compare/v1.5.0...v1.5.1)
 
 ## v1.5.0
 
@@ -291,3 +308,33 @@ Designed to replace outdated Microsoft RAW decoding on Windows Explorer, Preview
 - **`CR3WICCodec-x64-portable.zip`** — Portable package containing `Install.exe` and `Uninstall.exe` (one-click UAC elevation, no PowerShell needed) plus `test_decoder.exe` and manual PowerShell scripts.
 
 **Requirements:** Windows 10 (1809+) or Windows 11 (x64) and [Microsoft Visual C++ 2015–2022 Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+
+## Release Downloads Template
+
+### Which Download Should I Pick?
+
+- **Normal Windows 10/11 PCs & Laptops (Intel / AMD):** Download **`CR3WICCodec-Setup-x64-{{TAG}}.exe`** *(Recommended for 99% of users)*
+- **Snapdragon / Copilot+ ARM64 Laptops:** Download **`CR3WICCodec-Setup-arm64-{{TAG}}.exe`**
+
+### Downloads Overview ({{TAG}})
+
+| File | Who is it for? | What do you get? |
+| :--- | :--- | :--- |
+| **`CR3WICCodec-Setup-x64-{{TAG}}.exe`** | **Most Windows PCs (Intel / AMD)** | Self-contained native installer (`v{{VERSION}}`) with no `%TEMP%` `.tmp` unpacker, per-user (no admin) or all-users mode, auto DE/EN language, custom `.CR3` icon, auto VC++ check/install, and **Windows Settings → Apps** entry. |
+| **`CR3WICCodec-Setup-arm64-{{TAG}}.exe`** | **ARM64 / Snapdragon Windows 11 PCs** | Same self-contained native installer natively compiled for Windows ARM64 hardware (not for Intel/AMD PCs). |
+| **`CR3WICCodec-x64-portable.zip`** | **Power users (Intel / AMD)** | Standalone ZIP archive containing `CR3WICCodec.dll`, `libraw.dll`, `vcomp140.dll`, `Install.exe`, `Uninstall.exe`, `test_decoder.exe`, and `scripts/`. |
+| **`CR3WICCodec-arm64-portable.zip`** | **Power users (ARM64 / Snapdragon)** | Same portable ZIP archive natively compiled for ARM64 Windows 11 PCs. |
+| **`SHA256SUMS.txt`** | **Verification (optional)** | Unified SHA-256 checksums for all `{{TAG}}` `.exe` installers and `.zip` archives. |
+
+### How to Install (`.exe` Setup vs. `.zip` Portable)
+
+- **Via Setup Installer (`CR3WICCodec-Setup-*-{{TAG}}.exe` — Recommended):**
+  1. Download the `.exe` matching your PC (`x64` for standard Intel/AMD PCs, or `arm64` for Snapdragon PCs) and double-click it *(if Windows SmartScreen appears, click **More info → Run anyway**)*.
+  2. Choose **Install for me only** (no administrator rights needed; installs to `%LocalAppData%\Programs\CR3WICCodec`) or **Install for all users** (administrator; installs to `C:\Program Files\CR3WICCodec`).
+  3. Missing Visual C++ 2015–2022 runtimes are downloaded and installed automatically if needed. Uninstall anytime via **Windows Settings → Apps**.
+- **Via Portable ZIP (`CR3WICCodec-*-portable.zip`):**
+  1. Extract the **entire ZIP archive** into a folder first (do not run files directly from inside the Windows ZIP preview).
+  2. Double-click **`Install.exe`** (automatically uses system-wide mode when run as Administrator, or per-user mode without admin rights) — or run `scripts\install.ps1` in an Administrator PowerShell.
+  3. Remove anytime by double-clicking **`Uninstall.exe`** or via **Windows Settings → Apps**.
+
+> **Tip after installing or upgrading:** If previously cached pink/blank `.CR3` thumbnails stay visible in Windows Explorer, open **Disk Cleanup (`cleanmgr.exe`)** on `C:`, check **only "Thumbnails"**, and clear the cache.

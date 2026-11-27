@@ -28,13 +28,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Ensure Inno Setup 6 is installed
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
-            choco install innosetup -y --no-progress
-          }
-
       - name: Clone latest LibRaw
         shell: pwsh
         run: |
@@ -107,38 +100,55 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v', 'V')
           $outPath = "build/release-notes.md"
           New-Item -ItemType Directory -Force -Path "build" | Out-Null
 
-          $lines = Get-Content -Path "CHANGELOG.md" -Encoding UTF8
-          $escapedTag = [regex]::Escape($tag)
-          $inSection = $false
-          $sectionLevel = 0
-          $collected = [System.Collections.Generic.List[string]]::new()
-
-          foreach ($line in $lines) {
-            if (-not $inSection) {
-              if ($line -match "^(#{1,2})\s+\[?$escapedTag\]?(?:\s|$)") {
-                $inSection = $true
-                $sectionLevel = $Matches[1].Length
+          function Get-ChangelogSection {
+            param([string[]]$AllLines, [string]$HeaderPattern)
+            $inSec = $false
+            $secLevel = 0
+            $buf = [System.Collections.Generic.List[string]]::new()
+            foreach ($line in $AllLines) {
+              if (-not $inSec) {
+                if ($line -match $HeaderPattern) {
+                  $inSec = $true
+                  $secLevel = $Matches[1].Length
+                }
+                continue
               }
-              continue
+              if ($line -match "^(#{1,2})\s+" -and $Matches[1].Length -le $secLevel) {
+                break
+              }
+              $buf.Add($line)
             }
-
-            if ($line -match "^(#{1,2})\s+" -and $Matches[1].Length -le $sectionLevel) {
-              break
-            }
-            $collected.Add($line)
+            return ($buf -join "`n").Trim()
           }
 
-          $body = ($collected -join "`n").Trim()
+          $lines = Get-Content -Path "CHANGELOG.md" -Encoding UTF8
+          $escapedTag = [regex]::Escape($tag)
+          $body = Get-ChangelogSection -AllLines $lines -HeaderPattern "^(#{1,2})\s+\[?$escapedTag\]?(?:\s|$)"
+          $template = Get-ChangelogSection -AllLines $lines -HeaderPattern "^(#{1,2})\s+Release Downloads Template(?:\s|$)"
+
+          if (-not [string]::IsNullOrWhiteSpace($template)) {
+            $template = $template.Replace("{{TAG}}", $tag).Replace("{{VERSION}}", $version)
+          }
+
           if ([string]::IsNullOrWhiteSpace($body)) {
             Write-Warning "No section for '$tag' found in CHANGELOG.md; falling back to auto-generated release notes."
             "has_notes=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           } else {
-            Set-Content -Path $outPath -Value $body -Encoding UTF8
+            $fullNotes = if ([string]::IsNullOrWhiteSpace($template)) {
+              $body
+            } elseif ($body.Contains("{{DOWNLOADS_TEMPLATE}}")) {
+              $body.Replace("{{DOWNLOADS_TEMPLATE}}", $template)
+            } else {
+              "$body`n`n---`n`n$template"
+            }
+            $fullNotes = $fullNotes.Replace("{{TAG}}", $tag).Replace("{{VERSION}}", $version)
+            Set-Content -Path $outPath -Value $fullNotes -Encoding UTF8
             "has_notes=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            Write-Host "Extracted $($collected.Count) lines for $tag from CHANGELOG.md."
+            Write-Host "Extracted release notes for $tag (template attached: $([bool]$template))."
           }
 
       - name: Publish GitHub Release (from CHANGELOG.md)

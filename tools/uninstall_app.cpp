@@ -43,17 +43,33 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
-    const int answer = MessageBoxW(
-        nullptr,
-        cr3setup::L(
-            L"Do you really want to uninstall the Canon CR3 WIC RAW Codec?",
-            L"Moechten Sie den Canon CR3 WIC RAW Codec wirklich vollstaendig deinstallieren?"),
-        cr3setup::kAppTitle,
-        MB_YESNO | MB_ICONQUESTION);
-    if (answer != IDYES)
+    bool quiet = false;
+    int argc = 0;
+    if (LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc))
     {
-        CoUninitialize();
-        return 0;
+        for (int i = 1; i < argc; ++i)
+        {
+            if (_wcsicmp(argv[i], L"/quiet") == 0 || _wcsicmp(argv[i], L"--quiet") == 0 ||
+                _wcsicmp(argv[i], L"/SILENT") == 0 || _wcsicmp(argv[i], L"/VERYSILENT") == 0)
+                quiet = true;
+        }
+        LocalFree(argv);
+    }
+
+    if (!quiet)
+    {
+        const int answer = MessageBoxW(
+            nullptr,
+            cr3setup::L(
+                L"Do you really want to uninstall the Canon CR3 WIC RAW Codec?",
+                L"Möchten Sie den Canon CR3 WIC RAW Codec wirklich vollständig deinstallieren?"),
+            cr3setup::kAppTitle,
+            MB_YESNO | MB_ICONQUESTION);
+        if (answer != IDYES)
+        {
+            CoUninitialize();
+            return 0;
+        }
     }
 
     const std::wstring adminDir = cr3setup::GetProgramFilesInstallDir();
@@ -67,15 +83,18 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         wchar_t selfPath[MAX_PATH]{};
         GetModuleFileNameW(nullptr, selfPath, MAX_PATH);
         DWORD elevExit = 0;
-        if (!cr3setup::RunShellProcessWait(selfPath, L"", true, elevExit))
+        if (!cr3setup::RunShellProcessWait(selfPath, quiet ? L"/quiet" : L"", true, elevExit))
         {
-            MessageBoxW(
-                nullptr,
-                cr3setup::L(
-                    L"Administrator privileges are required to uninstall the system-wide installation.",
-                    L"Fuer die systemweite Deinstallation sind Administratorrechte erforderlich."),
-                cr3setup::kAppTitle,
-                MB_OK | MB_ICONWARNING);
+            if (!quiet)
+            {
+                MessageBoxW(
+                    nullptr,
+                    cr3setup::L(
+                        L"Administrator privileges are required to uninstall the system-wide installation.",
+                        L"Für die systemweite Deinstallation sind Administratorrechte erforderlich."),
+                    cr3setup::kAppTitle,
+                    MB_OK | MB_ICONWARNING);
+            }
             CoUninitialize();
             return 1;
         }
@@ -105,6 +124,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         }
         RegDeleteTreeW(root, instanceKey.c_str());
         RegDeleteTreeW(root, clsidKey.c_str());
+        cr3setup::UnregisterUninstallEntry(root);
         RemoveDirectoryContentsOrSchedule(folder);
     };
 
@@ -117,19 +137,22 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
 
     const bool scheduled = cr3setup::DirExists(userDir) || (cr3setup::IsProcessElevated() && cr3setup::DirExists(adminDir));
-    MessageBoxW(
-        nullptr,
-        scheduled
-            ? cr3setup::L(
-                  L"Canon CR3 WIC RAW Codec has been unregistered.\n"
-                  L"Some in-use DLL files are scheduled for automatic removal on the next Windows restart.",
-                  L"Canon CR3 WIC RAW Codec wurde deregistriert.\n"
-                  L"Einige geoeffnete DLL-Dateien werden beim naechsten Windows-Neustart automatisch entfernt.")
-            : cr3setup::L(
-                  L"Canon CR3 WIC RAW Codec has been completely removed.",
-                  L"Canon CR3 WIC RAW Codec wurde vollstaendig entfernt."),
-        cr3setup::kAppTitle,
-        MB_OK | MB_ICONINFORMATION);
+    if (!quiet)
+    {
+        MessageBoxW(
+            nullptr,
+            scheduled
+                ? cr3setup::L(
+                      L"Canon CR3 WIC RAW Codec has been unregistered.\n"
+                      L"Some in-use DLL files are scheduled for automatic removal on the next Windows restart.",
+                      L"Canon CR3 WIC RAW Codec wurde deregistriert.\n"
+                      L"Einige geöffnete DLL-Dateien werden beim nächsten Windows-Neustart automatisch entfernt.")
+                : cr3setup::L(
+                      L"Canon CR3 WIC RAW Codec has been completely removed.",
+                      L"Canon CR3 WIC RAW Codec wurde vollständig entfernt."),
+            cr3setup::kAppTitle,
+            MB_OK | MB_ICONINFORMATION);
+    }
 
     CoUninitialize();
     return 0;
