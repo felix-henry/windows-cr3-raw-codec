@@ -1,21 +1,21 @@
-# Canon CR3 Native WIC Codec (Windows 10/11 x64 & ARM64)
+# Canon CR3 Native WIC Codec (Windows 10 / 11)
 
 [![Build and Release Windows (x64 & ARM64)](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml/badge.svg)](https://github.com/felix-henry/windows-cr3-raw-codec/actions/workflows/build-release.yml)
 
-Native **Windows Imaging Component (WIC)** decoder for Canon `.CR3` RAW files, powered by current **LibRaw** with **OpenMP**.
-Makes Windows Explorer (thumbnails, preview pane & EXIF/GPS details), Paint, and classic WIC viewers render **true 14-bit RAW colors** without the magenta/pink tint of outdated Microsoft codecs.
+View Canon `.CR3` RAW photos in Windows 10 and 11 with true 14-bit colors—fixing the pink tint and missing previews caused by outdated built-in Windows decoders.
 
-- **True RAW Colors & Speed:** Full 14-bit demosaicing with OpenMP acceleration, fast previews (`GetPreview`), scaled decoding (`IWICBitmapSourceTransform`), and a 4× 64 KB LRU stream cache for network shares and SD cards.
-- **Explorer Metadata & Tuning:** Exposes camera/lens EXIF, GPS, and ratings in Windows Details; optional Registry tuning for 16-bit (`48bppBGR`), wide-gamut color spaces, or embedded JPEG thumbnails (see [Wiki](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)).
+- **Works out of the box:** File Explorer thumbnails, preview pane (`Alt + P`), classic Windows photo viewers, and camera details (EXIF, lens, GPS, and star ratings).
+- **Fast & accurate:** Powered by **LibRaw** with multi-core processing and smart caching for folders, SD cards, and network drives.
+- **Flexible:** Optional settings for 16-bit output, wide-gamut color spaces, or ultra-fast embedded JPEG thumbnails (see the [Wiki](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)).
 
 ---
 
-## Visual Comparison (Canon EOS R6 Mark III)
+## Before vs. After (Canon EOS R6 Mark III)
 
-| Microsoft Raw Image Decoder (Before) | Canon CR3 WIC Codec (After) |
+| Built-in Windows Decoder (Before) | Canon CR3 WIC Codec (After) |
 | :---: | :---: |
 | ![Before - Microsoft Raw Image Decoder pink tint](docs/images/before-microsoft-raw.jpg) | ![After - Canon CR3 WIC Codec natural colors](docs/images/after-cr3-wic-codec.jpg) |
-| *Outdated color matrix / black level → strong magenta wash* | *Current LibRaw 14-bit RAW demosaicing & camera WB* |
+| *Outdated camera support → heavy pink cast* | *True 14-bit RAW colors & camera white balance* |
 
 <sub>Sample RAW: [Canon EOS R6 Mark III (.CR3, CC0 Public Domain)](docs/images/canon-eos-r6-mark-iii-sample.CR3) via [raw.pixls.us](https://raw.pixls.us/)</sub>
 
@@ -26,14 +26,17 @@ Makes Windows Explorer (thumbnails, preview pane & EXIF/GPS details), Paint, and
 **[Download Latest Release](https://github.com/felix-henry/windows-cr3-raw-codec/releases/latest)** *(Windows 10 / 11)*
 
 **Which file should I download?**
-- **Most PCs & laptops (Intel / AMD):** Download **`CR3WICCodec-Setup-x64-v*.exe`** *(Recommended)*.
-- **Snapdragon / Copilot+ ARM64 laptops:** Download **`CR3WICCodec-Setup-arm64-v*.exe`**.
+- **Most Windows PCs & laptops (Intel / AMD):** **`CR3WICCodec-Setup-x64-v*.exe`** *(Recommended)*
+- **Snapdragon / ARM64 Windows 11 laptops:** **`CR3WICCodec-Setup-arm64-v*.exe`**
 
-1. **Setup Installer (`CR3WICCodec-Setup-x64-v*.exe` / `CR3WICCodec-Setup-arm64-v*.exe` — Recommended):** Self-contained native installer (no `%TEMP%` extraction stub) supporting both **standard user accounts** (per-user install without admin rights) and **system-wide admin installs**, automatic Windows UI language detection (DE/EN), and automatic Visual C++ 2015–2022 Redistributable download/install if missing. Uninstall anytime via **Windows Settings → Apps**.
-2. **Portable ZIP (`CR3WICCodec-x64-portable.zip` / `CR3WICCodec-arm64-portable.zip`):** Extract the full ZIP and double-click **`Install.exe`** (automatically installs system-wide as Administrator or per-user into `%LocalAppData%\Programs\CR3WICCodec` without admin rights, and offers one-click VC++ runtime auto-install if needed). Double-click **`Uninstall.exe`** or use **Windows Settings → Apps** to remove.
-3. **Updating:** Re-run the latest `Setup.exe` / `Install.exe` over an existing install (overwrites cleanly with no extra folder prompt), or run `powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\CR3WICCodec\scripts\update.ps1" -FromGitHub` in an Administrator PowerShell for system-wide installs (selects `x64` / `arm64` and verifies `SHA256SUMS.txt` automatically).
+### Ways to Install
+1. **Setup Installer (`.exe` — Recommended):** Run the installer and pick **Install for me only** (no admin rights needed) or **Install for all users** (admin). Missing Visual C++ runtime files are downloaded automatically. Uninstall anytime via **Windows Settings → Apps**.
+2. **Portable ZIP (`.zip`):** Unzip all files into a folder and double-click **`Install.exe`** (automatically installs for your user or all users if run as admin). Double-click **`Uninstall.exe`** or use **Windows Settings → Apps** to remove.
+3. **Updating:** Simply run the newest `.exe` installer over your existing installation—or run `scripts\update.ps1 -FromGitHub` in an Administrator PowerShell for system-wide installs.
 
-**Requirements:** Windows 10 (1809+) or Windows 11 (**x64** for standard Intel/AMD PCs, or **ARM64** for Snapdragon PCs). If installing offline without VC++ installed, grab [VC++ Redistributable x64](https://aka.ms/vs/17/release/vc_redist.x64.exe) or [ARM64](https://aka.ms/vs/17/release/vc_redist.arm64.exe).
+> **Old pink thumbnails still showing?** Open **Disk Cleanup (`cleanmgr.exe`)** on drive `C:`, select only **Thumbnails**, and clear the cache.
+
+**Requirements:** Windows 10 (1809+) or Windows 11. If installing offline without Visual C++ 2015–2022 installed, download it first for [x64](https://aka.ms/vs/17/release/vc_redist.x64.exe) or [ARM64](https://aka.ms/vs/17/release/vc_redist.arm64.exe).
 
 ---
 
@@ -45,9 +48,9 @@ Supports **all Canon `.CR3` cameras** supported by LibRaw, including:
 
 ---
 
-## Documentation
+## More Information
 
-- **[Wiki — Technical Guide, Build Instructions, Registry Tuning & Troubleshooting](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)**
+- **[Wiki — Troubleshooting, Registry Settings & Technical Details](https://github.com/felix-henry/windows-cr3-raw-codec/wiki)**
 
 ---
 
